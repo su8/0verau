@@ -18,4 +18,6 @@ In Debian it's `sudo apt install libncurses5-dev libncursesw5-dev libsfml-dev`, 
 
 ### Note
 
+To search for specific song, quickly **double press** `/` and type it's name.
+
 When you search for a song name and find it, make sure to erase the input with your backspace (above than Enter key), so the player to show the rest songs.
