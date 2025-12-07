@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Show status
-    mvprintw(rows - 4, 0, "Shuffle: %s | Repeat: %s | Volume: %.0f%%", shuffle ? "ON" : "OFF", repeat ? "ON" : "OFF", volume);
+    mvprintw(rows - 4, 0, "Shuffle: %s | Repeat: %s | Volume: %.0f %%", shuffle ? "ON" : "OFF", repeat ? "ON" : "OFF", volume);
 
     // Show search query
     if (!searchQuery.empty()) {

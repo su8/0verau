@@ -16,7 +16,7 @@
 
 CFLAGS+=-g2 -Wall -Wextra -O2 -std=c++20 -D_DEFAULT_SOURCE -pipe -pedantic -Wundef -Wshadow -W -Wwrite-strings -Wcast-align -Wstrict-overflow=5 -Wconversion -Wpointer-arith -Wformat=2 -Wsign-compare -Wendif-labels -Wredundant-decls -Winit-self
 LDFLAGS+=-lncurses -lsfml-audio -lsfml-system
-PACKAGE=0verhau
+PACKAGE=0verau
 PROG=main.cpp
 
 all:
