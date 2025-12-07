@@ -34,6 +34,8 @@ struct Track {
 
 // Draw function tracks and status lines
 void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery);
+// Filter playlist by search term
+std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term);
 // List audio files in directory
 std::vector<Track> listAudioFiles(const std::string &path);
 // Format seconds into mm:ss
@@ -101,11 +103,11 @@ int main(int argc, char *argv[]) {
       case KEY_UP: {
         highlight = (highlight - 1 + playlist.size()) % playlist.size();;
       }
-        break;
+      break;
       case KEY_DOWN: {
         highlight = (highlight + 1) % playlist.size();
       }
-        break;
+      break;
       case '\n': {
         if (!music.openFromFile(playlist[highlight].path)) {
           mvprintw(rows - 1, 0, "Error: Cannot play file.");
@@ -113,36 +115,36 @@ int main(int argc, char *argv[]) {
           music.setVolume(volume);
           music.play();
           currentTrack = highlight;
-        }  
+        }
       }
-        break;
+      break;
       case 'p': {
         if (music.getStatus() == sf::Music::Playing) music.pause();
         else if (music.getStatus() == sf::Music::Paused) music.play();
       }
-        break;
+      break;
       case '+': {
         volume = std::min(100.f, volume + 5.f);
         music.setVolume(volume);
       }
-        break;
+      break;
       case '-': {
         volume = std::max(0.f, volume - 5.f);
         music.setVolume(volume);
       }
-        break;
+      break;
       case 's': {
         music.stop();
       }
-        break;
+      break;
       case 'h': {
         shuffle = !shuffle;
       }
-        break;
+      break;
       case 'r': {
         repeat = !repeat;
       }
-        break;
+      break;
       case '/': {
         echo();
         curs_set(1);
@@ -150,24 +152,20 @@ int main(int argc, char *argv[]) {
         mvprintw(rows - 3, 0, "Search: ");
         getnstr(buf, 255);
         searchQuery = buf;
-        noecho();
-        curs_set(0);
         // Filter playlist
         auto allFiles = listAudioFiles(musicDir);
         playlist.clear();
-        for (auto &t : allFiles) {
-          if (t.name.find(searchQuery) != std::string::npos) {
-            playlist.push_back(t);
-          }
-        }
+        playlist = filterTracks(playlist, searchQuery);
         highlight = 0;
         offset = 0;
+        noecho();
+        curs_set(0);
       }
-        break;
+      break;
       case 'q': {
         running = false;
       }
-        break;
+      break;
       default:
         break;
     }
@@ -231,6 +229,22 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
   if (!searchQuery.empty()) {
     mvprintw(rows - 3, 0, "Search: %s", searchQuery.c_str());
   }
+}
+
+// Filter playlist by search term
+std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term) {
+  if (term.empty()) return tracks;
+  std::vector<Track> filtered;
+  for (auto &t : tracks) {
+    std::string lowerName = t.name;
+    std::string lowerTerm = term;
+    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+    std::transform(lowerTerm.begin(), lowerTerm.end(), lowerTerm.begin(), ::tolower);
+    if (lowerName.find(lowerTerm) != std::string::npos) {
+      filtered.push_back(t);
+    }
+  }
+  return filtered;
 }
 
 // List audio files in directory
