@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
     attroff(COLOR_PAIR(colorPair) | A_BOLD);
 
     mvprintw(0, 15, "%s", trackName.c_str());
-    mvprintw(1, 0, "Up/Down Arrow Navigate | Enter Play | P Pause | S Stop | +/- Volume | F Search | H Shuffle | R Repeat | Q Quit");
+    mvprintw(1, 0, "Up/Down Arrow Navigate | Left/Right Arrow Seek | Enter Play | P Pause | S Stop | +/- Volume | F Search | H Shuffle | R Repeat | Q Quit");
 
     // Show playlist (scrollable)
     int visibleRows = rows - 6;
@@ -145,6 +145,19 @@ int main(int argc, char *argv[]) {
       else if (music.getStatus() == sf::Music::Paused) music.play();
     } else if (choice == 's' || choice == 'S') {
       music.stop();
+    } else if (choice == KEY_LEFT) { // Seek backward 5 seconds
+      if (music.getStatus() != sf::Music::Stopped) {
+        float newPos = music.getPlayingOffset().asSeconds() - 5.0f;
+        if (newPos < 0) newPos = 0;
+        music.setPlayingOffset(sf::seconds(newPos));
+      }
+    } else if (choice == KEY_RIGHT) { // Seek forward 5 seconds
+      if (music.getStatus() != sf::Music::Stopped) {
+        float newPos = music.getPlayingOffset().asSeconds() + 5.0f;
+        if (newPos > music.getDuration().asSeconds())
+          newPos = music.getDuration().asSeconds();
+        music.setPlayingOffset(sf::seconds(newPos));
+      }
     } else if (choice == '+') {
       volume = std::min(100.f, volume + 5.f);
       music.setVolume(volume);
