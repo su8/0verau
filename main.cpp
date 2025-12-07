@@ -24,6 +24,8 @@
 #include <iomanip>
 #include <fstream>
 #include <cstdlib>
+#include <unordered_map>
+#include <sstream>
 #include <SFML/Audio.hpp>
 #include <ncurses.h>
 
@@ -33,7 +35,7 @@ struct Track {
 };
 
 // Draw function tracks and status lines
-void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery);
+void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys);
 // Filter playlist by search term
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term);
 // List audio files in directory
@@ -47,11 +49,19 @@ void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x
 void savePlaylistState(const std::vector<Track> &playlist, const std::string &searchTerm, bool shuffle);
 bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bool &shuffle);
 
+// Convert string to key code
+int keyFromString(const std::string &val);
+// Load key bindings from config file
+std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
+
 int main(int argc, char *argv[]) {
   if (argc < 2) { std::cerr << "You must provide some folder with music in it." << std::endl; return EXIT_FAILURE; }
   std::string musicDir = argv[1]; // Change to your music folder
   auto playlist = listAudioFiles(musicDir);
   if (playlist.empty()) { std::cerr << "No audio files found in " << musicDir << "\n"; return EXIT_FAILURE; }
+
+  // Load key bindings from config file
+  auto keys = loadKeyBindings((getenv("HOME") ? static_cast<std::string>(getenv("HOME")) : static_cast<std::string>(".")) + static_cast<std::string>("/") + static_cast<std::string>("0verau.conf"));
 
   // ncurses setup
   initscr();
@@ -97,7 +107,7 @@ int main(int argc, char *argv[]) {
       status = "Stopped";
       colorPair = 3;
     }
-    drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery);
+    drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys);
     // Show progress bar if playing
     if (music.getStatus() != sf::Music::Stopped) {
       float elapsed = music.getPlayingOffset().asSeconds();
@@ -106,75 +116,65 @@ int main(int argc, char *argv[]) {
     }
     wrefresh(stdscr);
     choice = getch();
-    switch (choice) {
-      case KEY_UP: {
-        highlight = (highlight - 1 + playlist.size()) % playlist.size();;
+    if (choice == keys["UP"]) {
+      highlight = (highlight - 1 + playlist.size()) % playlist.size();;
+    }
+    else if (choice == keys["DOWN"]) {
+      highlight = (highlight + 1) % playlist.size();
+    }
+    else if (choice == keys["PLAY"]) {
+      if (!music.openFromFile(playlist[highlight].path)) {
+        mvprintw(rows - 1, 0, "Error: Cannot play file.");
+      } else {
+        music.setVolume(volume);
+        music.play();
+        currentTrack = highlight;
       }
-      break;
-      case KEY_DOWN: {
-        highlight = (highlight + 1) % playlist.size();
-      }
-      break;
-      case '\n': {
-        if (!music.openFromFile(playlist[highlight].path)) {
-          mvprintw(rows - 1, 0, "Error: Cannot play file.");
-        } else {
-          music.setVolume(volume);
-          music.play();
-          currentTrack = highlight;
+    }
+    else if (choice == keys["PAUSE"]) {
+      if (music.getStatus() == sf::Music::Playing) music.pause();
+      else if (music.getStatus() == sf::Music::Paused) music.play();
+    }
+    else if (choice == keys["VOLUMEUP"]) {
+      volume = std::min(100.f, volume + 5.f);
+      music.setVolume(volume);
+    }
+    else if (choice == keys["VOLUMEDOWN"]) {
+      volume = std::max(0.f, volume - 5.f);
+      music.setVolume(volume);
+    }
+    else if (choice == keys["STOP"]) {
+      music.stop();
+    }
+    else if (choice == keys["SHUFFLE"]) {
+      shuffle = !shuffle;
+    }
+    else if (choice == keys["REPEAT"]) {
+      repeat = !repeat;
+    }
+    else if (choice == keys["SEARCH"]) {
+      echo();
+      curs_set(1);
+      char buf[256];
+      mvprintw(rows - 3, 0, "Search: ");
+      getnstr(buf, 255);
+      searchQuery = buf;
+      // Filter playlist
+      playlist.clear();
+      auto allFiles = listAudioFiles(musicDir);
+      for (auto &t : allFiles) {
+        if (t.name.find(searchQuery) != std::string::npos) {
+          playlist.push_back(t);
         }
       }
-      break;
-      case 'p': {
-        if (music.getStatus() == sf::Music::Playing) music.pause();
-        else if (music.getStatus() == sf::Music::Paused) music.play();
-      }
-      break;
-      case '+': {
-        volume = std::min(100.f, volume + 5.f);
-        music.setVolume(volume);
-      }
-      break;
-      case '-': {
-        volume = std::max(0.f, volume - 5.f);
-        music.setVolume(volume);
-      }
-      break;
-      case 's': {
-        music.stop();
-      }
-      break;
-      case 'h': {
-        shuffle = !shuffle;
-      }
-      break;
-      case 'r': {
-        repeat = !repeat;
-      }
-      break;
-      case '/': {
-        echo();
-        curs_set(1);
-        char buf[256];
-        mvprintw(rows - 3, 0, "Search: ");
-        getnstr(buf, 255);
-        searchQuery = buf;
-        // Filter playlist
-        auto allFiles = listAudioFiles(musicDir);
-        playlist.clear();
-        playlist = filterTracks(playlist, searchQuery);
-        highlight = 0;
-        offset = 0;
-        noecho();
-        curs_set(0);
-      }
-      break;
-      case 'q': {
-        running = false;
-      }
-      break;
-      default:
-        break;
+      //playlist = filterTracks(playlist, searchQuery);
+      highlight = 0;
+      offset = 0;
+      noecho();
+      curs_set(0);
+    }
+    else if (choice == keys["QUIT"]) {
+      running = false;
     }
     // Auto-play next track
     if (music.getStatus() == sf::Music::Stopped && currentTrack != -1) {
@@ -206,7 +206,7 @@ int main(int argc, char *argv[]) {
 }
 
 // Draw function tracks and status lines
-void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery) {
+void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys) {
   std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].name : "No track selected";
   if ((int)trackName.size() > cols - 20) {
     trackName = trackName.substr(0, cols - 23) + "...";
@@ -217,7 +217,7 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
   attroff(COLOR_PAIR(colorPair) | A_BOLD);
 
   mvprintw(0, 15, "%s", trackName.c_str());
-  mvprintw(1, 0, "Up/Down Arrow Navigate | Enter Play | P Pause | S Stop | +/- Volume | / Search | H Shuffle | R Repeat | Q Quit");
+  mvprintw(1, 0, "%c %c Navigate | %c Play | %c Pause | %c Stop | %c %c Volume UP/DOWN | %c Search | %c Shuffle | %c Repeat | %c Quit", keys["UP"], keys["DOWN"], keys["PLAY"], keys["PAUSE"], keys["STOP"], keys["VOLUMEUP"], keys["VOLUMEDOWN"], keys["SEARCH"], keys["SHUFFLE"], keys["REPEAT"], keys["QUIT"]);
 
   // Show playlist (scrollable)
   int visibleRows = rows - 6;
@@ -329,4 +329,39 @@ bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bo
     }
   }
   return !playlist.empty();
+}
+
+// Convert string to key code
+int keyFromString(const std::string &val) {
+  if (val == "ENTER") return '\n';
+  if (val.size() == 1) return val[0];
+  return -1; // Invalid
+}
+
+// Load key bindings from config file
+std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath) {
+  std::unordered_map<std::string, int> keys = {
+    {"UP", 'i'}, {"DOWN", 'j'}, {"PLAY", 'o'},
+    {"PAUSE", 'p'}, {"STOP", 's'}, {"QUIT", 'q'}, {"REPEAT", 'r'},
+    {"SHUFFLE", 'h'}, {"SEARCH", '/'}, {"VOLUMEUP", '+'}, {"VOLUMEDOWN", '-'},
+  };
+  std::ifstream file(configPath);
+  if (!file.is_open()) { return keys; }
+  std::string line;
+  while (std::getline(file, line)) {
+    if (line.empty() || line[0] == '#') continue; // Skip comments
+    std::istringstream iss(line);
+    std::string key, val;
+    if (std::getline(iss, key, '=') && std::getline(iss, val)) {
+      key.erase(remove_if(key.begin(), key.end(), ::isspace), key.end());
+      val.erase(remove_if(val.begin(), val.end(), ::isspace), val.end());
+      int code = keyFromString(val);
+      if (code != -1) {
+        keys[key] = code;
+      } else {
+        std::cerr << "Invalid key binding: " << key << "=" << val << "\n";
+      }
+    }
+  }
+  return keys;
 }
