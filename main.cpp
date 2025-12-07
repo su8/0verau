@@ -43,6 +43,10 @@ std::string formatTime(float seconds);
 // Draw progress bar with time
 void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x);
 
+// Saving and loading music files upon start/end
+void savePlaylistState(const std::vector<Track> &playlist, const std::string &searchTerm, bool shuffle);
+bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bool &shuffle);
+
 int main(int argc, char *argv[]) {
   if (argc < 2) { std::cerr << "You must provide some folder with music in it." << std::endl; return EXIT_FAILURE; }
   std::string musicDir = argv[1]; // Change to your music folder
@@ -71,6 +75,9 @@ int main(int argc, char *argv[]) {
 
   sf::Music music;
   int currentTrack = -1;
+
+  // Try to restore previous session
+  //loadPlaylistState(playlist, searchQuery, shuffle);
 
   while (running) {
     //clear();
@@ -191,6 +198,8 @@ int main(int argc, char *argv[]) {
       }
     }
   }
+  // Save state before exit
+  //savePlaylistState(playlist, searchQuery, shuffle);
   // Cleanup ncurses
   endwin();
   return EXIT_SUCCESS;
@@ -293,4 +302,31 @@ void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x
 
   // Total time
   printw(" %s", formatTime(total).c_str());
+}
+
+// Configuration file to be used to save all music files
+void savePlaylistState(const std::vector<Track> &playlist, const std::string &searchTerm, bool shuffle) {
+  std::ofstream out(".0verauPlaylist.txt");
+  if (!out) return;
+  out << searchTerm << "\n" << shuffle << "\n";
+  for (auto &t : playlist) out << t.path << "\n";
+}
+
+// Configuration file to be used to load all music files
+bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bool &shuffle) {
+  std::ifstream in(".0verauPlaylist.txt");
+  if (!in) return false;
+  int shuf, rep;
+  std::getline(in, searchTerm);
+  in >> shuf >> rep;
+  shuffle = shuf;
+  in.ignore();
+  playlist.clear();
+  std::string path;
+  while (std::getline(in, path)) {
+    if (std::filesystem::exists(path)) {
+      playlist.push_back({path, std::filesystem::path(path).filename().string()});
+    }
+  }
+  return !playlist.empty();
 }
