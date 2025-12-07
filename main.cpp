@@ -34,8 +34,6 @@ struct Track {
 
 // List audio files in directory
 std::vector<Track> listAudioFiles(const std::string &path);
-// Draw progress bar
-void drawProgressBar(float progress, int width, int y, int x);
 // Format seconds into mm:ss
 std::string formatTime(float seconds);
 // Draw progress bar with time
@@ -113,19 +111,12 @@ int main(int argc, char *argv[]) {
     }
 
     // Show status
-    mvprintw(rows - 4, 0, "Shuffle: %s | Repeat: %s | Volume: %.0f%%",
-             shuffle ? "ON" : "OFF", repeat ? "ON" : "OFF", volume);
+    mvprintw(rows - 4, 0, "Shuffle: %s | Repeat: %s | Volume: %.0f%%", shuffle ? "ON" : "OFF", repeat ? "ON" : "OFF", volume);
 
     // Show search query
     if (!searchQuery.empty()) {
       mvprintw(rows - 3, 0, "Search: %s", searchQuery.c_str());
     }
-
-    // Show progress bar if playing
-    /*if (music.getStatus() != sf::Music::Stopped) {
-     *           float progress = music.getPlayingOffset().asSeconds() / music.getDuration().asSeconds();
-     *           drawProgressBar(progress, cols - 10, rows - 2, 0);
-  }*/
 
     // Show progress bar if playing
     if (music.getStatus() != sf::Music::Stopped) {
@@ -136,7 +127,6 @@ int main(int argc, char *argv[]) {
 
     refresh();
     choice = getch();
-
     if (choice == KEY_UP) {
       highlight = (highlight - 1 + playlist.size()) % playlist.size();
     } else if (choice == KEY_DOWN) {
@@ -231,17 +221,6 @@ std::vector<Track> listAudioFiles(const std::string &path) {
     std::cerr << "Error reading directory: " << e.what() << "\n";
   }
   return files;
-}
-
-// Draw progress bar
-void drawProgressBar(float progress, int width, int y, int x) {
-  int filled = static_cast<int>(progress * width);
-  mvprintw(y, x, "[");
-  for (int i = 0; i < width; ++i) {
-    if (i < filled) addch('=');
-    else addch(' ');
-  }
-  printw("]");
 }
 
 // Format seconds into mm:ss
