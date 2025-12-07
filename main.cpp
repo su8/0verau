@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
 
   while (true) {
     //clear();
-    erase();
+    werase(stdscr);
     int rows, cols;
     getmaxyx(stdscr, rows, cols);
     // Now Playing section
@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
       drawProgressBarWithTime(elapsed, total, cols - 20, rows - 2, 0);
     }
 
-    refresh();
+    wrefresh(stdscr);
     choice = getch();
     if (choice == KEY_UP) {
       highlight = (highlight - 1 + playlist.size()) % playlist.size();
@@ -228,7 +228,7 @@ std::vector<Track> listAudioFiles(const std::string &path) {
 std::string formatTime(float seconds) {
   int mins = static_cast<int>(seconds) / 60;
   int secs = static_cast<int>(seconds) % 60;
-  char buf[256];
+  char buf[256] = {'\0'};
   snprintf(buf, sizeof(buf) - 1, "%02d:%02d", mins, secs);
   return std::string(buf);
 }
