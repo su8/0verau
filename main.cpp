@@ -61,14 +61,14 @@ int main(int argc, char *argv[]) {
   int highlight = 0;
   int offset = 0;
   int choice;
-  bool shuffle = false, repeat = false;
+  bool shuffle = false, repeat = false, running = true;
   float volume = 100.f;
   std::string searchQuery;
 
   sf::Music music;
   int currentTrack = -1;
 
-  while (true) {
+  while (running) {
     //clear();
     werase(stdscr);
     int rows, cols;
@@ -128,54 +128,79 @@ int main(int argc, char *argv[]) {
 
     wrefresh(stdscr);
     choice = getch();
-    if (choice == KEY_UP) {
-      highlight = (highlight - 1 + playlist.size()) % playlist.size();
-    } else if (choice == KEY_DOWN) {
-      highlight = (highlight + 1) % playlist.size();
-    } else if (choice == '\n') {
-      if (!music.openFromFile(playlist[highlight].path)) {
-        mvprintw(rows - 1, 0, "Error: Cannot play file.");
-      } else {
+    switch (choice) {
+      case KEY_UP: {
+        highlight = (highlight - 1 + playlist.size()) % playlist.size();;
+      }
+        break;
+      case KEY_DOWN: {
+        highlight = (highlight + 1) % playlist.size();
+      }
+        break;
+      case '\n': {
+        if (!music.openFromFile(playlist[highlight].path)) {
+          mvprintw(rows - 1, 0, "Error: Cannot play file.");
+        } else {
+          music.setVolume(volume);
+          music.play();
+          currentTrack = highlight;
+        }  
+      }
+        break;
+      case 'p': {
+        if (music.getStatus() == sf::Music::Playing) music.pause();
+        else if (music.getStatus() == sf::Music::Paused) music.play();
+      }
+        break;
+      case '+': {
+        volume = std::min(100.f, volume + 5.f);
         music.setVolume(volume);
-        music.play();
-        currentTrack = highlight;
       }
-    } else if (choice == 'p' || choice == 'P') {
-      if (music.getStatus() == sf::Music::Playing) music.pause();
-      else if (music.getStatus() == sf::Music::Paused) music.play();
-    } else if (choice == 's' || choice == 'S') {
-      music.stop();
-    } else if (choice == '+') {
-      volume = std::min(100.f, volume + 5.f);
-      music.setVolume(volume);
-    } else if (choice == '-') {
-      volume = std::max(0.f, volume - 5.f);
-      music.setVolume(volume);
-    } else if (choice == 'h' || choice == 'H') {
-      shuffle = !shuffle;
-    } else if (choice == 'r' || choice == 'R') {
-      repeat = !repeat;
-    } else if (choice == 'f' || choice == 'F') {
-      echo();
-      curs_set(1);
-      char buf[256];
-      mvprintw(rows - 3, 0, "Search: ");
-      getnstr(buf, 255);
-      searchQuery = buf;
-      noecho();
-      curs_set(0);
-      // Filter playlist
-      auto allFiles = listAudioFiles(musicDir);
-      playlist.clear();
-      for (auto &t : allFiles) {
-        if (t.name.find(searchQuery) != std::string::npos) {
-          playlist.push_back(t);
+        break;
+      case '-': {
+        volume = std::max(0.f, volume - 5.f);
+        music.setVolume(volume);
+      }
+        break;
+      case 's': {
+        music.stop();
+      }
+        break;
+      case 'h': {
+        shuffle = !shuffle;
+      }
+        break;
+      case 'r': {
+        repeat = !repeat;
+      }
+        break;
+      case 'f': {
+        echo();
+        curs_set(1);
+        char buf[256];
+        mvprintw(rows - 3, 0, "Search: ");
+        getnstr(buf, 255);
+        searchQuery = buf;
+        noecho();
+        curs_set(0);
+        // Filter playlist
+        auto allFiles = listAudioFiles(musicDir);
+        playlist.clear();
+        for (auto &t : allFiles) {
+          if (t.name.find(searchQuery) != std::string::npos) {
+            playlist.push_back(t);
+          }
         }
+        highlight = 0;
+        offset = 0;
       }
-      highlight = 0;
-      offset = 0;
-    } else if (choice == 'q' || choice == 'Q') {
-      break;
+        break;
+      case 'q': {
+        running = false;
+      }
+        break;
+      default:
+        break;
     }
 
     // Auto-play next track
