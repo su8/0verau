@@ -232,7 +232,7 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
   }
 
   // Show status
-  mvprintw(rows - 4, 0, "Tracks: %u | Shuffle: %s | Repeat: %s | Volume: %.0f %%", static_cast<unsigned int>(playlist.size()), shuffle ? "ON" : "OFF", repeat ? "ON" : "OFF", volume);
+  mvprintw(rows - 4, 0, "Tracks: %u | Shuffle: %s | Repeat: %s | Volume: %u%%", static_cast<unsigned int>(playlist.size()), shuffle ? "ON" : "OFF", repeat ? "ON" : "OFF", static_cast<unsigned int>(volume));
 
   // Show search query
   if (!searchQuery.empty()) {
