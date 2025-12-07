@@ -70,6 +70,7 @@ int main(int argc, char *argv[]) {
 
   while (true) {
     //clear();
+    erase();
     int rows, cols;
     getmaxyx(stdscr, rows, cols);
     // Now Playing section
