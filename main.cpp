@@ -32,6 +32,8 @@ struct Track {
   std::string name;
 };
 
+// Draw function tracks and status lines
+void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery);
 // List audio files in directory
 std::vector<Track> listAudioFiles(const std::string &path);
 // Format seconds into mm:ss
@@ -86,46 +88,13 @@ int main(int argc, char *argv[]) {
       status = "Stopped";
       colorPair = 3;
     }
-
-    std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].name : "No track selected";
-    if ((int)trackName.size() > cols - 20) {
-      trackName = trackName.substr(0, cols - 23) + "...";
-    }
-
-    attron(COLOR_PAIR(colorPair) | A_BOLD);
-    mvprintw(0, 0, "%s", status.c_str());
-    attroff(COLOR_PAIR(colorPair) | A_BOLD);
-
-    mvprintw(0, 15, "%s", trackName.c_str());
-    mvprintw(1, 0, "Up/Down Arrow Navigate | Enter Play | P Pause | S Stop | +/- Volume | / Search | H Shuffle | R Repeat | Q Quit");
-
-    // Show playlist (scrollable)
-    int visibleRows = rows - 6;
-    if (highlight < offset) offset = highlight;
-    if (highlight >= offset + visibleRows) offset = highlight - visibleRows + 1;
-
-    for (int i = 0; i < visibleRows && i + offset < (int)playlist.size(); ++i) {
-      int idx = i + offset;
-      if (idx == highlight) attron(A_REVERSE);
-      mvprintw(i + 2, 0, "%s", playlist[idx].name.c_str());
-      if (idx == highlight) attroff(A_REVERSE);
-    }
-
-    // Show status
-    mvprintw(rows - 4, 0, "Shuffle: %s | Repeat: %s | Volume: %.0f %%", shuffle ? "ON" : "OFF", repeat ? "ON" : "OFF", volume);
-
-    // Show search query
-    if (!searchQuery.empty()) {
-      mvprintw(rows - 3, 0, "Search: %s", searchQuery.c_str());
-    }
-
+    drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery);
     // Show progress bar if playing
     if (music.getStatus() != sf::Music::Stopped) {
       float elapsed = music.getPlayingOffset().asSeconds();
       float total = music.getDuration().asSeconds();
       drawProgressBarWithTime(elapsed, total, cols - 20, rows - 2, 0);
     }
-
     wrefresh(stdscr);
     choice = getch();
     switch (choice) {
@@ -202,7 +171,6 @@ int main(int argc, char *argv[]) {
       default:
         break;
     }
-
     // Auto-play next track
     if (music.getStatus() == sf::Music::Stopped && currentTrack != -1) {
       if (repeat) {
@@ -228,6 +196,41 @@ int main(int argc, char *argv[]) {
   // Cleanup ncurses
   endwin();
   return EXIT_SUCCESS;
+}
+
+// Draw function tracks and status lines
+void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery) {
+  std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].name : "No track selected";
+  if ((int)trackName.size() > cols - 20) {
+    trackName = trackName.substr(0, cols - 23) + "...";
+  }
+
+  attron(COLOR_PAIR(colorPair) | A_BOLD);
+  mvprintw(0, 0, "%s", status.c_str());
+  attroff(COLOR_PAIR(colorPair) | A_BOLD);
+
+  mvprintw(0, 15, "%s", trackName.c_str());
+  mvprintw(1, 0, "Up/Down Arrow Navigate | Enter Play | P Pause | S Stop | +/- Volume | / Search | H Shuffle | R Repeat | Q Quit");
+
+  // Show playlist (scrollable)
+  int visibleRows = rows - 6;
+  if (highlight < offset) offset = highlight;
+  if (highlight >= offset + visibleRows) offset = highlight - visibleRows + 1;
+
+  for (int i = 0; i < visibleRows && i + offset < (int)playlist.size(); ++i) {
+    int idx = i + offset;
+    if (idx == highlight) attron(A_REVERSE);
+    mvprintw(i + 2, 0, "%s", playlist[idx].name.c_str());
+    if (idx == highlight) attroff(A_REVERSE);
+  }
+
+  // Show status
+  mvprintw(rows - 4, 0, "Shuffle: %s | Repeat: %s | Volume: %.0f %%", shuffle ? "ON" : "OFF", repeat ? "ON" : "OFF", volume);
+
+  // Show search query
+  if (!searchQuery.empty()) {
+    mvprintw(rows - 3, 0, "Search: %s", searchQuery.c_str());
+  }
 }
 
 // List audio files in directory
