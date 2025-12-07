@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
     attroff(COLOR_PAIR(colorPair) | A_BOLD);
 
     mvprintw(0, 15, "%s", trackName.c_str());
-    mvprintw(1, 0, "Up/Down Arrow Navigate | Enter Play | P Pause | S Stop | +/- Volume | F Search | H Shuffle | R Repeat | Q Quit");
+    mvprintw(1, 0, "Up/Down Arrow Navigate | Enter Play | P Pause | S Stop | +/- Volume | / Search | H Shuffle | R Repeat | Q Quit");
 
     // Show playlist (scrollable)
     int visibleRows = rows - 6;
@@ -174,7 +174,7 @@ int main(int argc, char *argv[]) {
         repeat = !repeat;
       }
         break;
-      case 'f': {
+      case '/': {
         echo();
         curs_set(1);
         char buf[256];
