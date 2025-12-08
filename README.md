@@ -18,7 +18,7 @@ In Debian it's `sudo apt install libncurses5-dev libncursesw5-dev libsfml-dev`, 
 
 ### keybinds
 
-You can specify your own keybings (before starting **0verau**) in `$HOME/.0verau.conf` file:
+You can specify your own keybings (before starting **0verau**) in `$HOME/0verau.conf` file:
 
 ```bash
 # Default keybindings
