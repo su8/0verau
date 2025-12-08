@@ -26,7 +26,6 @@ UP=i
 DOWN=j
 PLAY=o
 PAUSE=p
-STOP=s
 QUIT=q
 REPEAT=r
 SHUFFLE=h

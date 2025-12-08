@@ -143,9 +143,6 @@ int main(int argc, char *argv[]) {
       volume = std::max(0.f, volume - 5.f);
       music.setVolume(volume);
     }
-    else if (choice == keys["STOP"]) {
-      music.stop();
-    }
     else if (choice == keys["SHUFFLE"]) {
       shuffle = !shuffle;
     }
@@ -232,7 +229,7 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
   attroff(COLOR_PAIR(colorPair) | A_BOLD);
 
   mvprintw(0, 15, "%s", trackName.c_str());
-  mvprintw(1, 0, "%c %c Navigate | %c Play | %c Pause | %c Stop | SEEK left %c right %c | %c %c Volume UP/DOWN | %c Search | %c Shuffle | %c Repeat | %c Quit", keys["UP"], keys["DOWN"], keys["PLAY"], keys["PAUSE"], keys["STOP"], keys["SEEKLEFT"], keys["SEEKRIGHT"], keys["VOLUMEUP"], keys["VOLUMEDOWN"], keys["SEARCH"], keys["SHUFFLE"], keys["REPEAT"], keys["QUIT"]);
+  mvprintw(1, 0, "%c %c Navigate | %c Play | %c Pause | SEEK %c left %c right | %c %c Volume UP/DOWN | %c Search | %c Shuffle | %c Repeat | %c Quit", keys["UP"], keys["DOWN"], keys["PLAY"], keys["PAUSE"], keys["SEEKLEFT"], keys["SEEKRIGHT"], keys["VOLUMEUP"], keys["VOLUMEDOWN"], keys["SEARCH"], keys["SHUFFLE"], keys["REPEAT"], keys["QUIT"]);
 
   // Show playlist (scrollable)
   int visibleRows = rows - 6;
@@ -357,7 +354,7 @@ int keyFromString(const std::string &val) {
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath) {
   std::unordered_map<std::string, int> keys = {
     {"UP", 'i'}, {"DOWN", 'j'}, {"PLAY", 'o'}, {"SEEKLEFT", ','}, {"SEEKRIGHT", '.'},
-    {"PAUSE", 'p'}, {"STOP", 's'}, {"QUIT", 'q'}, {"REPEAT", 'r'},
+    {"PAUSE", 'p'}, {"QUIT", 'q'}, {"REPEAT", 'r'},
     {"SHUFFLE", 'h'}, {"SEARCH", '/'}, {"VOLUMEUP", '+'}, {"VOLUMEDOWN", '-'},
   };
   std::ifstream file(configPath);
