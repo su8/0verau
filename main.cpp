@@ -28,10 +28,15 @@
 #include <sstream>
 #include <SFML/Audio.hpp>
 #include <ncurses.h>
+//#include <taglib/fileref.h>
+//#include <taglib/tag.h>  pass -lgat to LDFLAGS
 
 struct Track {
   std::string path;
   std::string name;
+  /*std::string title;
+  std::string artist;
+  std::string album;*/
 };
 
 // Draw function tracks and status lines
@@ -40,6 +45,8 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term);
 // List audio files in directory
 std::vector<Track> listAudioFiles(const std::string &path);
+// Function to read metadata using TagLib
+//Track readMetadata(const std::filesystem::path &filePath);
 // Format seconds into mm:ss
 std::string formatTime(float seconds);
 // Draw progress bar with time
@@ -240,6 +247,7 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
     int idx = i + offset;
     if (idx == highlight) attron(A_REVERSE);
     mvprintw(i + 2, 0, "%s", playlist[idx].name.c_str());
+    //mvprintw(i + 2, 0, "%s %s", playlist[idx].album.c_str(), playlist[idx].title.c_str());
     if (idx == highlight) attroff(A_REVERSE);
   }
 
@@ -277,6 +285,7 @@ std::vector<Track> listAudioFiles(const std::string &path) {
         std::string ext = entry.path().extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
         if (ext == ".wav" || ext == ".ogg" || ext == ".flac" || ext == ".mp3") {
+          //files.push_back(readMetadata(entry.path()));
           files.push_back({entry.path().string(), entry.path().filename().string()});
         }
       }
@@ -286,6 +295,30 @@ std::vector<Track> listAudioFiles(const std::string &path) {
   }
   return files;
 }
+
+// Function to read metadata using TagLib
+/*Track readMetadata(const std::filesystem::path &filePath) {
+  Track info;
+  info.path = filePath.string();
+  try {
+    TagLib::FileRef f(filePath.c_str());
+    if (!f.isNull() && f.tag()) {
+      TagLib::Tag *tag = f.tag();
+      info.title  = tag->title().isEmpty()  ? filePath.filename().string() : tag->title().to8Bit(true);
+      info.artist = tag->artist().isEmpty() ? "Unknown Artist" : tag->artist().to8Bit(true);
+      info.album  = tag->album().isEmpty()  ? "Unknown Album" : tag->album().to8Bit(true);
+    } else {
+      info.title = filePath.filename().string();
+      info.artist = "Unknown Artist";
+      info.album = "Unknown Album";
+    }
+  } catch (...) {
+    info.title = filePath.filename().string();
+    info.artist = "Unknown Artist";
+    info.album = "Unknown Album";
+  }
+  return info;
+}*/
 
 // Format seconds into mm:ss
 std::string formatTime(float seconds) {
