@@ -61,7 +61,7 @@ int main(int argc, char *argv[]) {
   if (playlist.empty()) { std::cerr << "No audio files found in " << musicDir << "\n"; return EXIT_FAILURE; }
 
   // Load key bindings from config file
-  auto keys = loadKeyBindings((getenv("HOME") ? static_cast<std::string>(getenv("HOME")) : static_cast<std::string>(".")) + static_cast<std::string>("/") + static_cast<std::string>("0verau.conf"));
+  auto keys = loadKeyBindings((getenv("HOME") ? static_cast<std::string>(getenv("HOME")) : static_cast<std::string>(".")) + static_cast<std::string>("/0verau.conf"));
 
   // ncurses setup
   initscr();
