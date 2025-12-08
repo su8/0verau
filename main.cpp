@@ -28,15 +28,15 @@
 #include <sstream>
 #include <SFML/Audio.hpp>
 #include <ncurses.h>
-//#include <taglib/fileref.h>
-//#include <taglib/tag.h>  pass -lgat to LDFLAGS
+#include <taglib/fileref.h>
+#include <taglib/tag.h>
 
 struct Track {
   std::string path;
   std::string name;
-  /*std::string title;
+  std::string title;
   std::string artist;
-  std::string album;*/
+  std::string album;
 };
 
 // Draw function tracks and status lines
@@ -46,7 +46,7 @@ std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::str
 // List audio files in directory
 std::vector<Track> listAudioFiles(const std::string &path);
 // Function to read metadata using TagLib
-//Track readMetadata(const std::filesystem::path &filePath);
+Track readMetadata(const std::filesystem::path &filePath);
 // Format seconds into mm:ss
 std::string formatTime(float seconds);
 // Draw progress bar with time
@@ -166,12 +166,12 @@ int main(int argc, char *argv[]) {
       // Filter playlist
       playlist.clear();
       auto allFiles = listAudioFiles(musicDir);
-      for (auto &t : allFiles) {
+      /*for (auto &t : allFiles) {
         if (t.name.find(searchQuery) != std::string::npos) {
           playlist.push_back(t);
         }
-      }
-      //playlist = filterTracks(playlist, searchQuery);
+      }*/
+      playlist = filterTracks(allFiles, searchQuery);
       highlight = 0;
       offset = 0;
       noecho();
@@ -246,8 +246,8 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
   for (int i = 0; i < visibleRows && i + offset < (int)playlist.size(); ++i) {
     int idx = i + offset;
     if (idx == highlight) attron(A_REVERSE);
-    mvprintw(i + 2, 0, "%s", playlist[idx].name.c_str());
-    //mvprintw(i + 2, 0, "%s %s", playlist[idx].album.c_str(), playlist[idx].title.c_str());
+    //mvprintw(i + 2, 0, "%s", playlist[idx].name.c_str());
+    mvprintw(i + 2, 0, "%s", playlist[idx].title.c_str());
     if (idx == highlight) attroff(A_REVERSE);
   }
 
@@ -265,11 +265,11 @@ std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::str
   if (term.empty()) return tracks;
   std::vector<Track> filtered;
   for (auto &t : tracks) {
-    std::string lowerName = t.name;
+    std::string lowerName = t.title;
     std::string lowerTerm = term;
     std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
     std::transform(lowerTerm.begin(), lowerTerm.end(), lowerTerm.begin(), ::tolower);
-    if (lowerName.find(lowerTerm) != std::string::npos) {
+    if (lowerName.rfind(lowerTerm) != std::string::npos) {
       filtered.push_back(t);
     }
   }
@@ -285,8 +285,8 @@ std::vector<Track> listAudioFiles(const std::string &path) {
         std::string ext = entry.path().extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
         if (ext == ".wav" || ext == ".ogg" || ext == ".flac" || ext == ".mp3") {
-          //files.push_back(readMetadata(entry.path()));
-          files.push_back({entry.path().string(), entry.path().filename().string()});
+          files.push_back(readMetadata(entry.path()));
+          //files.push_back({entry.path().string(), entry.path().filename().string()});
         }
       }
     }
@@ -297,7 +297,7 @@ std::vector<Track> listAudioFiles(const std::string &path) {
 }
 
 // Function to read metadata using TagLib
-/*Track readMetadata(const std::filesystem::path &filePath) {
+Track readMetadata(const std::filesystem::path &filePath) {
   Track info;
   info.path = filePath.string();
   try {
@@ -318,7 +318,7 @@ std::vector<Track> listAudioFiles(const std::string &path) {
     info.album = "Unknown Album";
   }
   return info;
-}*/
+}
 
 // Format seconds into mm:ss
 std::string formatTime(float seconds) {

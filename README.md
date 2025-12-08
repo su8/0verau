@@ -12,7 +12,7 @@ sudo/doas make install
 
 # Requirements
 
-In Debian it's `sudo apt install libncurses5-dev libncursesw5-dev libsfml-dev`, in your other OS's search for `lib ncurses  libsfml-dev`.
+In Debian it's `sudo apt install libncurses5-dev libncursesw5-dev libsfml-dev libtag1-dev`, in your other OS's search for `lib ncurses  libsfml libtag`.
 
 ---
 
