@@ -152,7 +152,7 @@ int main(int argc, char *argv[]) {
     else if (choice == keys["SEARCH"]) {
       echo();
       curs_set(1);
-      char buf[256];
+      char buf[256] = {'\0'};
       mvprintw(rows - 3, 0, "Search: ");
       getnstr(buf, 255);
       searchQuery = buf;
