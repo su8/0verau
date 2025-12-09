@@ -365,6 +365,9 @@ Track readMetadata(const std::filesystem::path &filePath) {
     int minutes = static_cast<int>(duration) / 60;
     int seconds = static_cast<int>(duration) % 60;
     info.duration = std::to_string(minutes) + ":" + std::to_string(seconds);
+    mpg123_close(mh);
+    mpg123_delete(mh);
+    mpg123_exit();
   }
   return info;
 }
