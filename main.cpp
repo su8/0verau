@@ -53,8 +53,8 @@ std::string formatTime(float seconds);
 void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x);
 
 // Saving and loading music files upon start/end
-void savePlaylistState(const std::vector<Track> &playlist, const std::string &searchTerm, bool shuffle);
-bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bool &shuffle);
+//void savePlaylistState(const std::vector<Track> &playlist, const std::string &searchTerm, bool shuffle);
+//bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bool &shuffle);
 
 // Convert string to key code
 int keyFromString(const std::string &val);
@@ -360,15 +360,15 @@ void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x
 }
 
 // Configuration file to be used to save all music files
-void savePlaylistState(const std::vector<Track> &playlist, const std::string &searchTerm, bool shuffle) {
+/*void savePlaylistState(const std::vector<Track> &playlist, const std::string &searchTerm, bool shuffle) {
   std::ofstream out(".0verauPlaylist.txt");
   if (!out) return;
   out << searchTerm << "\n" << shuffle << "\n";
   for (auto &t : playlist) out << t.path << "\n";
-}
+}*/
 
 // Configuration file to be used to load all music files
-bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bool &shuffle) {
+/*bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bool &shuffle) {
   std::ifstream in(".0verauPlaylist.txt");
   if (!in) return false;
   int shuf, rep;
@@ -384,7 +384,7 @@ bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bo
     }
   }
   return !playlist.empty();
-}
+}*/
 
 // Convert string to key code
 int keyFromString(const std::string &val) {
