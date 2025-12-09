@@ -30,6 +30,7 @@
 #include <ncurses.h>
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
+#include <mpg123.h>
 
 struct Track {
   std::string path;
@@ -37,6 +38,7 @@ struct Track {
   std::string title;
   std::string artist;
   std::string album;
+  std::string duration;
 };
 
 // Draw function tracks and status lines
@@ -257,7 +259,7 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
     int idx = i + offset;
     if (idx == highlight) attron(A_REVERSE);
     //mvprintw(i + 2, 0, "%s", playlist[idx].name.c_str());
-    mvprintw(i + 2, 0, "%d. %s %s %s", i + 1, ((showHideAlbum == 1) ? playlist[idx].album.c_str() : ""), ((showHideArtist == 1) ? playlist[idx].artist.c_str() : ""), playlist[idx].title.c_str());
+    mvprintw(i + 2, 0, "%d. %s %s %s %s", i + 1, ((showHideAlbum == 1) ? playlist[idx].album.c_str() : ""), ((showHideArtist == 1) ? playlist[idx].artist.c_str() : ""), playlist[idx].title.c_str(), playlist[idx].duration.c_str());
     if (idx == highlight) attroff(A_REVERSE);
   }
 
@@ -309,7 +311,40 @@ std::vector<Track> listAudioFiles(const std::string &path) {
 // Function to read metadata using TagLib
 Track readMetadata(const std::filesystem::path &filePath) {
   Track info;
+  mpg123_handle *mh = NULL;
+  int err;
+  off_t samples;
+  long int rate;
+  int channeles;
+  int encoding;
+  unsigned int allOkay = 1U;
   info.path = filePath.string();
+  if (mpg123_init() != MPG123_OK) {
+    allOkay = 0U;
+  }
+  mh = mpg123_new(NULL, &err);
+  if (mh == NULL) {
+    mpg123_exit();
+    allOkay = 0U;
+  }
+  if (mpg123_open(mh, info.path.c_str()) != MPG123_OK && allOkay == 1) {
+    mpg123_delete(mh);
+    mpg123_exit();
+    allOkay = 0U;
+  }
+  if (mpg123_getformat(mh, &rate, &channeles, &encoding) != MPG123_OK && allOkay == 1) {
+    mpg123_close(mh);
+    mpg123_delete(mh);
+    mpg123_exit();
+    allOkay = 0U;
+  }
+  samples = mpg123_length(mh);
+  if (samples == MPG123_ERR && allOkay == 1) {
+    mpg123_close(mh);
+    mpg123_delete(mh);
+    mpg123_exit();
+    allOkay = 0U;
+  }
   try {
     TagLib::FileRef f(filePath.c_str());
     if (!f.isNull() && f.tag()) {
@@ -326,6 +361,12 @@ Track readMetadata(const std::filesystem::path &filePath) {
     info.title = filePath.filename().string();
     info.artist = "Unknown Artist";
     info.album = "Unknown Album";
+  }
+  if (allOkay == 1U) {
+    double duration = static_cast<double>(samples) / static_cast<double>(rate);
+    int minutes = static_cast<int>(duration) / 60;
+    int seconds = static_cast<int>(duration) % 60;
+    info.duration = std::to_string(minutes) + ":" + std::to_string(seconds);
   }
   return info;
 }
