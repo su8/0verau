@@ -226,7 +226,7 @@ int main(int argc, char *argv[]) {
 
 // Draw function tracks and status lines
 void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys) {
-  std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].name : "No track selected";
+  std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
   if ((int)trackName.size() > cols - 20) {
     trackName = trackName.substr(0, cols - 23) + "...";
   }
