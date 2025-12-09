@@ -322,24 +322,23 @@ Track readMetadata(const std::filesystem::path &filePath) {
   if (mpg123_init() != MPG123_OK) {
     allOkay = 0U;
   }
-  mh = mpg123_new(NULL, &err);
-  if (mh == NULL) {
+  if (allOkay == 1U && (mh = mpg123_new(NULL, &err)) == NULL) {
     mpg123_exit();
     allOkay = 0U;
   }
-  if (mpg123_open(mh, info.path.c_str()) != MPG123_OK && allOkay == 1) {
+  if (mpg123_open(mh, info.path.c_str()) != MPG123_OK && allOkay == 1U) {
     mpg123_delete(mh);
     mpg123_exit();
     allOkay = 0U;
   }
-  if (mpg123_getformat(mh, &rate, &channeles, &encoding) != MPG123_OK && allOkay == 1) {
+  if (mpg123_getformat(mh, &rate, &channeles, &encoding) != MPG123_OK && allOkay == 1U) {
     mpg123_close(mh);
     mpg123_delete(mh);
     mpg123_exit();
     allOkay = 0U;
   }
   samples = mpg123_length(mh);
-  if (samples == MPG123_ERR && allOkay == 1) {
+  if (samples == MPG123_ERR && allOkay == 1U) {
     mpg123_close(mh);
     mpg123_delete(mh);
     mpg123_exit();
