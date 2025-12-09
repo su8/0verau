@@ -40,7 +40,7 @@ struct Track {
 };
 
 // Draw function tracks and status lines
-void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys);
+void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum);
 // Filter playlist by search term
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term);
 // List audio files in directory
@@ -86,7 +86,10 @@ int main(int argc, char *argv[]) {
   int highlight = 0;
   int offset = 0;
   int choice;
-  bool shuffle = false, repeat = false, running = true;
+  bool shuffle = false;
+  bool repeat = false;
+  bool running = true;
+  int showHideAlbum = 0;
   float volume = 100.f;
   std::string searchQuery;
 
@@ -114,7 +117,7 @@ int main(int argc, char *argv[]) {
       status = "Stopped";
       colorPair = 3;
     }
-    drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys);
+    drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum);
     // Show progress bar if playing
     if (music.getStatus() != sf::Music::Stopped) {
       float elapsed = music.getPlayingOffset().asSeconds();
@@ -155,6 +158,9 @@ int main(int argc, char *argv[]) {
     }
     else if (choice == keys["REPEAT"]) {
       repeat = !repeat;
+    }
+    else if (choice == keys["SHOW_HIDE_ALBUM"]) {
+      showHideAlbum = !showHideAlbum;
     }
     else if (choice == keys["SEARCH"]) {
       echo();
@@ -225,7 +231,7 @@ int main(int argc, char *argv[]) {
 }
 
 // Draw function tracks and status lines
-void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys) {
+void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum) {
   std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
   if ((int)trackName.size() > cols - 20) {
     trackName = trackName.substr(0, cols - 23) + "...";
@@ -247,12 +253,12 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
     int idx = i + offset;
     if (idx == highlight) attron(A_REVERSE);
     //mvprintw(i + 2, 0, "%s", playlist[idx].name.c_str());
-    mvprintw(i + 2, 0, "%s", playlist[idx].title.c_str());
+    mvprintw(i + 2, 0, "%s %s", ((showHideAlbum == 1) ? playlist[idx].album.c_str() : ""), playlist[idx].title.c_str());
     if (idx == highlight) attroff(A_REVERSE);
   }
 
   // Show status
-  mvprintw(rows - 4, 0, "Tracks: %u | Shuffle: %s | Repeat: %s | Volume: %u%%", static_cast<unsigned int>(playlist.size()), shuffle ? "ON" : "OFF", repeat ? "ON" : "OFF", static_cast<unsigned int>(volume));
+  mvprintw(rows - 4, 0, "Tracks: %u | Shuffle: %s | Repeat: %s | Show Album %s | Volume: %u%%", static_cast<unsigned int>(playlist.size()), shuffle ? "ON" : "OFF", repeat ? "ON" : "OFF", showHideAlbum ? "ON" : "OFF", static_cast<unsigned int>(volume));
 
   // Show search query
   if (!searchQuery.empty()) {
@@ -387,8 +393,8 @@ int keyFromString(const std::string &val) {
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath) {
   std::unordered_map<std::string, int> keys = {
     {"UP", 'i'}, {"DOWN", 'j'}, {"PLAY", 'o'}, {"SEEKLEFT", ','}, {"SEEKRIGHT", '.'},
-    {"PAUSE", 'p'}, {"QUIT", 'q'}, {"REPEAT", 'r'},
-    {"SHUFFLE", 'h'}, {"SEARCH", '/'}, {"VOLUMEUP", '+'}, {"VOLUMEDOWN", '-'},
+    {"PAUSE", 'p'}, {"QUIT", 'q'}, {"REPEAT", '@'}, {"SHOW_HIDE_ALBUM", '$'},
+    {"SHUFFLE", '!'}, {"SEARCH", '/'}, {"VOLUMEUP", '+'}, {"VOLUMEDOWN", '-'},
   };
   std::ifstream file(configPath);
   if (!file.is_open()) { return keys; }
