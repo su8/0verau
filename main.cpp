@@ -50,7 +50,7 @@ std::vector<Track> listAudioFiles(const std::string &path);
 // Function to read metadata using TagLib
 Track readMetadata(const std::filesystem::path &filePath);
 // Format seconds into mm:ss
-std::string formatTime(float seconds);
+std::string formatTime(float duration);
 // Draw progress bar with time
 void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x);
 
@@ -322,6 +322,7 @@ Track readMetadata(const std::filesystem::path &filePath) {
   info.title = filePath.filename().string();
   info.artist = "Unknown Artist";
   info.album = "Unknown Album";
+  info.duration = "";
   if (mpg123_init() != MPG123_OK) {
     allOkay = 0U;
   }
@@ -364,9 +365,9 @@ Track readMetadata(const std::filesystem::path &filePath) {
 }
 
 // Format seconds into mm:ss
-std::string formatTime(float seconds) {
-  int mins = static_cast<int>(seconds) / 60;
-  int secs = static_cast<int>(seconds) % 60;
+std::string formatTime(float duration) {
+  int mins = static_cast<int>(duration) / 60;
+  int secs = static_cast<int>(duration) % 60;
   char buf[256] = {'\0'};
   snprintf(buf, sizeof(buf) - 1, "%02d:%02d", mins, secs);
   return std::string(buf);
