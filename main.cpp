@@ -361,10 +361,8 @@ Track readMetadata(const std::filesystem::path &filePath) {
     info.album = "Unknown Album";
   }
   if (allOkay == 1U) {
-    double duration = static_cast<double>(samples) / static_cast<double>(rate);
-    int minutes = static_cast<int>(duration) / 60;
-    int seconds = static_cast<int>(duration) % 60;
-    info.duration = std::to_string(minutes) + ":" + std::to_string(seconds);
+    float duration = static_cast<float>(samples) / static_cast<float>(rate);
+    info.duration = formatTime(duration);
     mpg123_close(mh);
     mpg123_delete(mh);
     mpg123_exit();
