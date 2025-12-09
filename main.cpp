@@ -319,6 +319,9 @@ Track readMetadata(const std::filesystem::path &filePath) {
   int encoding;
   unsigned int allOkay = 1U;
   info.path = filePath.string();
+  info.title = filePath.filename().string();
+  info.artist = "Unknown Artist";
+  info.album = "Unknown Album";
   if (mpg123_init() != MPG123_OK) {
     allOkay = 0U;
   }
@@ -343,22 +346,12 @@ Track readMetadata(const std::filesystem::path &filePath) {
     mpg123_exit();
     allOkay = 0U;
   }
-  try {
-    TagLib::FileRef f(filePath.c_str());
-    if (!f.isNull() && f.tag()) {
-      TagLib::Tag *tag = f.tag();
-      info.title  = tag->title().isEmpty()  ? filePath.filename().string() : tag->title().to8Bit(true);
-      info.artist = tag->artist().isEmpty() ? "Unknown Artist" : tag->artist().to8Bit(true);
-      info.album  = tag->album().isEmpty()  ? "Unknown Album" : tag->album().to8Bit(true);
-    } else {
-      info.title = filePath.filename().string();
-      info.artist = "Unknown Artist";
-      info.album = "Unknown Album";
-    }
-  } catch (...) {
-    info.title = filePath.filename().string();
-    info.artist = "Unknown Artist";
-    info.album = "Unknown Album";
+  TagLib::FileRef f(filePath.c_str());
+  if (!f.isNull() && f.tag()) {
+    TagLib::Tag *tag = f.tag();
+    info.title  = tag->title().isEmpty()  ? filePath.filename().string() : tag->title().to8Bit(true);
+    info.artist = tag->artist().isEmpty() ? "Unknown Artist" : tag->artist().to8Bit(true);
+    info.album  = tag->album().isEmpty()  ? "Unknown Album" : tag->album().to8Bit(true);
   }
   if (allOkay == 1U) {
     float duration = static_cast<float>(samples) / static_cast<float>(rate);
