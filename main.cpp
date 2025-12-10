@@ -270,7 +270,10 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
   if (!searchQuery.empty()) {
     mvprintw(rows - 3, 0, "Search: %s", searchQuery.c_str());
   }
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-overflow"
 }
+#pragma GCC diagnostic pop
 
 // Filter playlist by search term
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term) {
