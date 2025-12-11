@@ -86,7 +86,7 @@ std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPa
 sf::Music music;
 int currentLine = 0;
 using json = nlohmann::json;
-std::string HOME = (getenv("HOME") ? getenv("HOME") + static_cast<std::string>("/") : "./");
+std::string HOME = (getenv("HOME") ? static_cast<std::string>(getenv("HOME")) + static_cast<std::string>("/") : "./");
 std::string LYRICFILE = HOME + ".song.lrc";
 std::string LYRICFILE2 = HOME + ".song2.lrc";
 
