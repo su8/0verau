@@ -53,4 +53,4 @@ When you search for a song name and find it, make sure to erase the input with y
 
 The lyrics are harcoded to `song.lrc`, and I'm working on fetching from internet lyrics and saving them in a file, so the next time you play the same song to use this lyrics file.
 
-If you can, please fetch the lyrics yourself and overwrite the `song.lrc` manually or with a script, sorry for the additional work that I'm requesting from you.
+If you can, please fetch the lyrics yourself and overwrite the `song.lrc` manually or with a script, sorry for the additional work that I'm requesting from you. Have a look at https://github.com/guxsousa/cmus-lyrics for the parsing from scripts.
