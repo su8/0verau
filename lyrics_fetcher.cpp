@@ -36,6 +36,7 @@ bool fetchLyricsToFile(const std::string& url, const std::string& outputFile) {
   CURL* curl;
   CURLcode res;
   std::string response;
+  long int http_code = 0;
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
   curl = curl_easy_init();
@@ -62,6 +63,14 @@ bool fetchLyricsToFile(const std::string& url, const std::string& outputFile) {
     curl_global_cleanup();
     return false;
   }
+
+  if (res == CURLE_OK) {
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    if (http_code == 404) {
+      return false;
+    }
+  }
+
 
   // Save to .lrc file
   std::ofstream outFile(outputFile, std::ios::out | std::ios::trunc);
