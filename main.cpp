@@ -55,7 +55,7 @@ struct LyricLine {
 };
 
 // Draw the lyrics for given song
-void drawLyrics(int currentLine2, int rows, int cols, std::vector<Track> playlist, int currentTrack);
+void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrack);
 // Draw function tracks and status lines
 void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist);
 // Filter playlist by search term
@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
       drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
     }
     else {
-      drawLyrics(currentLine, rows, cols, playlist, currentTrack);
+      drawLyrics(rows, cols, playlist, currentTrack);
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
 
@@ -275,7 +275,7 @@ int main(int argc, char *argv[]) {
   return EXIT_SUCCESS;
 }
 
-void drawLyrics(int currentLine2, int rows, int cols, std::vector<Track> playlist, int currentTrack) {
+void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrack) {
   if (music.getStatus() != sf::Music::Playing) {
     return;
   }
@@ -326,6 +326,7 @@ void drawLyrics(int currentLine2, int rows, int cols, std::vector<Track> playlis
       }
     }
   }
+  currentLine = 0;
 }
 
 // Draw function tracks and status lines
