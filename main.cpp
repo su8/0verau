@@ -62,8 +62,6 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term);
 // List audio files in directory
 std::vector<Track> listAudioFiles(const std::string &path);
-// To replace the spaces in the song files with %20
-std::string replaceSpaces(const std::string &input, const std::string &replacement);
 // Function to read metadata using TagLib
 Track readMetadata(const std::filesystem::path &filePath);
 // Parse .lrc file
@@ -88,6 +86,9 @@ std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPa
 sf::Music music;
 int currentLine = 0;
 using json = nlohmann::json;
+std::string HOME = (getenv("HOME") ? getenv("HOME") + static_cast<std::string>("/") : "./");
+std::string LYRICFILE = HOME + ".song.lrc";
+std::string LYRICFILE2 = HOME + ".song2.lrc";
 
 int main(int argc, char *argv[]) {
   if (argc < 2) { std::cerr << "You must provide some folder with music in it." << std::endl; return EXIT_FAILURE; }
@@ -175,7 +176,7 @@ int main(int argc, char *argv[]) {
         music.play();
         currentTrack = highlight;
       }
-      remove("song.lrc");
+      remove(LYRICFILE.c_str());
     }
     else if (choice == keys["PAUSE"]) {
       if (music.getStatus() == sf::Music::Playing) music.pause();
@@ -245,7 +246,7 @@ int main(int argc, char *argv[]) {
     }
     // Auto-play next track
     if (music.getStatus() == sf::Music::Stopped && currentTrack != -1) {
-      remove("song.lrc");
+      remove(LYRICFILE.c_str());
       if (repeat) {
         music.play();
       } else {
@@ -273,48 +274,30 @@ int main(int argc, char *argv[]) {
   return EXIT_SUCCESS;
 }
 
-std::string replaceSpaces(const std::string &input, const std::string &replacement) {
-  if (replacement.empty()) {
-    std::string result;
-    result.reserve(input.size());
-    for (char ch : input) {
-      if (ch != ' ') result.push_back(ch);
-    }
-    return result;
-  }
-  std::string result = input;
-  size_t pos = 0;
-  while ((pos = result.find(' ', pos)) != std::string::npos) {
-    result.replace(pos, 1, replacement);
-    pos += replacement.length();
-  }
-  return result;
-}
-
 void drawLyrics(int currentLine, int rows, int cols, std::vector<Track> playlist, int currentTrack) {
   if (music.getStatus() != sf::Music::Playing) {
     return;
   }
   std::string apiUrl = "https://lrclib.net/api/get?artist_name=" + playlist[currentTrack].artist + "&track_name=" + playlist[currentTrack].title;
-  std::string api2 = replaceSpaces(apiUrl, "%20");
-  if (!std::filesystem::exists("song.lrc")) {
-    if (!fetchLyricsToFile(api2, "song.lrc")) {
+  std::string api2 = std::regex_replace(apiUrl, std::regex(" "), "%20");
+  if (!std::filesystem::exists(LYRICFILE)) {
+    if (!fetchLyricsToFile(api2, LYRICFILE)) {
       printw("Can't find lyrics for this song. Switch back to the menu with the songs.");
       return;
     }
   }
-  std::ifstream f("song.lrc");
+  std::ifstream f(LYRICFILE);
   json data = json::parse(f);
   std::string songLrc = data["syncedLyrics"];
   f.close();
   std::ofstream outFile;
-  outFile.open("song2.lrc", std::ios::out);
+  outFile.open(HOME + ".song2.lrc", std::ios::out);
   if (!outFile) {
     return;
   }
   outFile << songLrc;
   outFile.close();
-  auto lyrics = loadLyrics("song2.lrc");
+  auto lyrics = loadLyrics(LYRICFILE2);
   float currentTime = music.getPlayingOffset().asSeconds();
   float duration = music.getDuration().asSeconds();
   //float progress = currentTime / duration;
