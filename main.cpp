@@ -84,7 +84,6 @@ int keyFromString(const std::string &val);
 // Load key bindings from config file
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
 sf::Music music;
-std::string LYRICFILE2 = "/tmp/.song2.lrc";
 int currentLine = 0;
 
 using json = nlohmann::json;
@@ -291,13 +290,13 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrac
   std::string songLrc = data["syncedLyrics"];
   f.close();
   std::ofstream outFile;
-  outFile.open(LYRICFILE2, std::ios::out);
+  outFile.open("/tmp/.song2.lrc", std::ios::out);
   if (!outFile) {
     return;
   }
   outFile << songLrc;
   outFile.close();
-  auto lyrics = loadLyrics(LYRICFILE2);
+  auto lyrics = loadLyrics("/tmp/.song2.lrc");
   float currentTime = music.getPlayingOffset().asSeconds();
   float duration = music.getDuration().asSeconds();
   //float progress = currentTime / duration;
@@ -316,8 +315,8 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrac
   int centerY = rows / 2;
   for (int i = -3; i <= 3; i++) {
     int idx = static_cast<int>(currentLine) + i;
-    if (idx >= 0 && idx < (int)lyrics.size()) {
-      int yPos = centerY + (int)((i - scrollOffset) * 2); // 2 = line spacing
+    if (idx >= 0 && idx < static_cast<int>(lyrics.size())) {
+      int yPos = centerY + static_cast<int>(((i - scrollOffset) * 2)); // 2 = line spacing
       if (yPos >= 0 && yPos < rows - 3) {
         if (i == 0) attron(A_BOLD | A_STANDOUT);
         mvprintw(yPos, (cols - lyrics[idx].text.size()) / 2, "%s", lyrics[idx].text.c_str());
@@ -331,7 +330,7 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrac
 // Draw function tracks and status lines
 void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist) {
   std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
-  if ((int)trackName.size() > cols - 20) {
+  if (static_cast<int>(trackName.size()) > cols - 20) {
     trackName = trackName.substr(0, cols - 23) + "...";
   }
 
@@ -347,7 +346,7 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
   if (highlight < offset) offset = highlight;
   if (highlight >= offset + visibleRows) offset = highlight - visibleRows + 1;
 
-  for (int i = 0; i < visibleRows && i + offset < (int)playlist.size(); ++i) {
+  for (int i = 0; i < visibleRows && i + offset < static_cast<int>(playlist.size()); ++i) {
     int idx = i + offset;
     if (idx == highlight) attron(A_REVERSE);
     //mvprintw(i + 2, 0, "%s", playlist[idx].name.c_str());
