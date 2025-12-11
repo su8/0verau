@@ -281,7 +281,9 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrac
   std::string curLyrFile = std::regex_replace(playlist[currentTrack].path, std::regex(" "), "_") + static_cast<std::string>(".lrc");
   if (!std::filesystem::exists(curLyrFile)) {
     if (!fetchLyricsToFile(api2, curLyrFile)) {
+      attron(COLOR_PAIR(3) | A_BOLD);
       printw("Can't find lyrics for this song. Switch back to the menu with the songs.");
+      attroff(COLOR_PAIR(3) | A_BOLD);
       return;
     }
   }
