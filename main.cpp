@@ -291,7 +291,7 @@ void drawLyrics(int currentLine, int rows, int cols, std::vector<Track> playlist
   std::string songLrc = data["syncedLyrics"];
   f.close();
   std::ofstream outFile;
-  outFile.open(HOME + ".song2.lrc", std::ios::out);
+  outFile.open(LYRICFILE2, std::ios::out);
   if (!outFile) {
     return;
   }
