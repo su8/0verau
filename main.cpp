@@ -84,9 +84,7 @@ int keyFromString(const std::string &val);
 // Load key bindings from config file
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
 sf::Music music;
-std::string HOME = (getenv("HOME") ? static_cast<std::string>(getenv("HOME")) + static_cast<std::string>("/") : "./");
-std::string LYRICFILE = HOME + ".song.lrc";
-std::string LYRICFILE2 = HOME + ".song2.lrc";
+std::string LYRICFILE2 = "/tmp/.song2.lrc";
 int currentLine = 0;
 
 using json = nlohmann::json;
@@ -288,7 +286,6 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrac
       return;
     }
   }
-  //std::cout << curLyrFile << std::endl;
   std::ifstream f(curLyrFile);
   json data = json::parse(f);
   std::string songLrc = data["syncedLyrics"];
