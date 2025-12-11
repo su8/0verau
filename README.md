@@ -56,3 +56,7 @@ The lyrics are harcoded to `song.lrc`, and I'm working on fetching from internet
 If you can, please fetch the lyrics yourself and overwrite the `song.lrc` manually or with a script, sorry for the additional work that I'm requesting from you. Have a look at https://github.com/guxsousa/cmus-lyrics https://github.com/hakerdefo/cmus-lyrics for the parsing from scripts.
 
 If you have some lyrics api to fetch from, you can adjust the `lyrics_fetcher.cpp` according to your needs.
+
+### semi-working
+
+I've got the lyrics downloaded into `song2.lrc` with the `main2.cpp` file, still in-work process. Edit `Makefile` and in `LDFLAGS` append at the end `-lcurl` and
