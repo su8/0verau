@@ -24,6 +24,7 @@
 #include <iomanip>
 #include <fstream>
 #include <cstdlib>
+#include <cstdio>
 #include <unordered_map>
 #include <sstream>
 #include <cmath>
@@ -36,6 +37,8 @@
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
 #include <mpg123.h>
+#include <curl/curl.h>
+#include "json.hpp"
 
 struct Track {
   std::string path;
@@ -52,13 +55,15 @@ struct LyricLine {
 };
 
 // Draw the lyrics for given song
-void drawLyrics(int currentLine, int rows, int cols);
+void drawLyrics(int currentLine, int rows, int cols, std::vector<Track> playlist, int currentTrack);
 // Draw function tracks and status lines
 void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist);
 // Filter playlist by search term
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term);
 // List audio files in directory
 std::vector<Track> listAudioFiles(const std::string &path);
+// To replace the spaces in the song files with %20
+std::string replaceSpaces(const std::string &input, const std::string &replacement);
 // Function to read metadata using TagLib
 Track readMetadata(const std::filesystem::path &filePath);
 // Parse .lrc file
@@ -67,6 +72,10 @@ std::vector<LyricLine> loadLyrics(const std::string &filename);
 std::string formatTime(float duration);
 // Draw progress bar with time
 void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x);
+// Callback function to write received data into a string
+static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
+// fetch the and save the lyrics
+bool fetchLyricsToFile(const std::string &url, const std::string &outputFile);
 
 // Saving and loading music files upon start/end
 //void savePlaylistState(const std::vector<Track> &playlist, const std::string &searchTerm, bool shuffle);
@@ -78,6 +87,7 @@ int keyFromString(const std::string &val);
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
 sf::Music music;
 int currentLine = 0;
+using json = nlohmann::json;
 
 int main(int argc, char *argv[]) {
   if (argc < 2) { std::cerr << "You must provide some folder with music in it." << std::endl; return EXIT_FAILURE; }
@@ -139,7 +149,7 @@ int main(int argc, char *argv[]) {
       drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
     }
     else {
-      drawLyrics(currentLine, rows, cols);
+      drawLyrics(currentLine, rows, cols, playlist, currentTrack);
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
 
@@ -165,6 +175,7 @@ int main(int argc, char *argv[]) {
         music.play();
         currentTrack = highlight;
       }
+      remove("song.lrc");
     }
     else if (choice == keys["PAUSE"]) {
       if (music.getStatus() == sf::Music::Playing) music.pause();
@@ -234,6 +245,7 @@ int main(int argc, char *argv[]) {
     }
     // Auto-play next track
     if (music.getStatus() == sf::Music::Stopped && currentTrack != -1) {
+      remove("song.lrc");
       if (repeat) {
         music.play();
       } else {
@@ -261,35 +273,72 @@ int main(int argc, char *argv[]) {
   return EXIT_SUCCESS;
 }
 
-void drawLyrics(int currentLine, int rows, int cols) {
-  if (music.getStatus() == sf::Music::Playing) {
-    // Load lyrics
-    auto lyrics = loadLyrics("song.lrc");
-    float currentTime = music.getPlayingOffset().asSeconds();
-    float duration = music.getDuration().asSeconds();
-    //float progress = currentTime / duration;
-
-    // Find current line index
-    while (currentLine + 1 < lyrics.size() && currentTime >= lyrics[currentLine + 1].time) {
-      currentLine++;
+std::string replaceSpaces(const std::string &input, const std::string &replacement) {
+  if (replacement.empty()) {
+    std::string result;
+    result.reserve(input.size());
+    for (char ch : input) {
+      if (ch != ' ') result.push_back(ch);
     }
-    // Calculate smooth scroll offset
-    float lineStartTime = lyrics[currentLine].time;
-    float lineEndTime = (currentLine + 1 < lyrics.size()) ? lyrics[currentLine + 1].time : duration;
-    float lineDuration = lineEndTime - lineStartTime;
-    float elapsedInLine = currentTime - lineStartTime;
-    float scrollOffset = (elapsedInLine / lineDuration) * 1.0f; // 1.0 = one line height
-    // Draw lyrics with fractional offset
-    int centerY = rows / 2;
-    for (int i = -3; i <= 3; i++) {
-      int idx = static_cast<int>(currentLine) + i;
-      if (idx >= 0 && idx < (int)lyrics.size()) {
-        int yPos = centerY + (int)((i - scrollOffset) * 2); // 2 = line spacing
-        if (yPos >= 0 && yPos < rows - 3) {
-          if (i == 0) attron(A_BOLD | A_STANDOUT);
-          mvprintw(yPos, (cols - lyrics[idx].text.size()) / 2, "%s", lyrics[idx].text.c_str());
-          if (i == 0) attroff(A_BOLD | A_STANDOUT);
-        }
+    return result;
+  }
+  std::string result = input;
+  size_t pos = 0;
+  while ((pos = result.find(' ', pos)) != std::string::npos) {
+    result.replace(pos, 1, replacement);
+    pos += replacement.length();
+  }
+  return result;
+}
+
+void drawLyrics(int currentLine, int rows, int cols, std::vector<Track> playlist, int currentTrack) {
+  if (music.getStatus() != sf::Music::Playing) {
+    return;
+  }
+  std::string apiUrl = "https://lrclib.net/api/get?artist_name=" + playlist[currentTrack].artist + "&track_name=" + playlist[currentTrack].title;
+  std::string api2 = replaceSpaces(apiUrl, "%20");
+  if (!std::filesystem::exists("song.lrc")) {
+    if (!fetchLyricsToFile(api2, "song.lrc")) {
+      printw("Can't find lyrics for this song. Switch back to the menu with the songs.");
+      return;
+    }
+  }
+  std::ifstream f("song.lrc");
+  json data = json::parse(f);
+  std::string songLrc = data["syncedLyrics"];
+  f.close();
+  std::ofstream outFile;
+  outFile.open("song2.lrc", std::ios::out);
+  if (!outFile) {
+    return;
+  }
+  outFile << songLrc;
+  outFile.close();
+  auto lyrics = loadLyrics("song2.lrc");
+  float currentTime = music.getPlayingOffset().asSeconds();
+  float duration = music.getDuration().asSeconds();
+  //float progress = currentTime / duration;
+
+  // Find current line index
+  while (currentLine + 1 < lyrics.size() && currentTime >= lyrics[currentLine + 1].time) {
+    currentLine++;
+  }
+  // Calculate smooth scroll offset
+  float lineStartTime = lyrics[currentLine].time;
+  float lineEndTime = (currentLine + 1 < lyrics.size()) ? lyrics[currentLine + 1].time : duration;
+  float lineDuration = lineEndTime - lineStartTime;
+  float elapsedInLine = currentTime - lineStartTime;
+  float scrollOffset = (elapsedInLine / lineDuration) * 1.0f; // 1.0 = one line height
+  // Draw lyrics with fractional offset
+  int centerY = rows / 2;
+  for (int i = -3; i <= 3; i++) {
+    int idx = static_cast<int>(currentLine) + i;
+    if (idx >= 0 && idx < (int)lyrics.size()) {
+      int yPos = centerY + (int)((i - scrollOffset) * 2); // 2 = line spacing
+      if (yPos >= 0 && yPos < rows - 3) {
+        if (i == 0) attron(A_BOLD | A_STANDOUT);
+        mvprintw(yPos, (cols - lyrics[idx].text.size()) / 2, "%s", lyrics[idx].text.c_str());
+        if (i == 0) attroff(A_BOLD | A_STANDOUT);
       }
     }
   }
@@ -461,7 +510,7 @@ void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x
  * if (!out) return;
  * out << searchTerm << "\n" << shuffle << "\n";
  * for (auto &t : playlist) out << t.path << "\n";
- } **/
+ * } **/
 
 // Configuration file to be used to load all music files
 /*bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bool &shuffle) {
@@ -480,7 +529,7 @@ void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x
  *   }
  * }
  * return !playlist.empty();
- } **/
+ * } **/
 
 // Parse .lrc file
 std::vector<LyricLine> loadLyrics(const std::string &filename) {
@@ -499,6 +548,72 @@ std::vector<LyricLine> loadLyrics(const std::string &filename) {
     }
   }
   return lyrics;
+}
+
+// Callback function to write received data into a string
+static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+    size_t totalSize = size * nmemb;
+    std::string* str = static_cast<std::string*>(userp);
+    str->append(static_cast<char*>(contents), totalSize);
+    return totalSize;
+}
+
+bool fetchLyricsToFile(const std::string &url, const std::string &outputFile) {
+    CURL* curl;
+    CURLcode res;
+    std::string response;
+    long int http_code = 0;
+
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    curl = curl_easy_init();
+
+    if (!curl) {
+      std::cerr << "Failed to initialize cURL.\n";
+      curl_global_cleanup();
+      return false;
+    }
+
+    // Set cURL options
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L); // Follow redirects
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla 5.0");
+
+    // Perform the request
+    res = curl_easy_perform(curl);
+
+    if (res != CURLE_OK) {
+      std::cerr << "cURL error: " << curl_easy_strerror(res) << "\n";
+      curl_easy_cleanup(curl);
+      curl_global_cleanup();
+      return false;
+    }
+
+    if (res == CURLE_OK) {
+      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+      if (http_code == 404) {
+        return false;
+      }
+    }
+
+    // Save to .lrc file
+    std::ofstream outFile(outputFile, std::ios::out | std::ios::trunc);
+    if (!outFile) {
+      std::cerr << "Error opening file for writing: " << outputFile << "\n";
+      curl_easy_cleanup(curl);
+      curl_global_cleanup();
+      return false;
+    }
+    outFile << response;
+    outFile.close();
+
+    //std::cout << "Lyrics saved to: " << outputFile << "\n";
+
+    // Cleanup
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
+    return true;
 }
 
 // Convert string to key code
