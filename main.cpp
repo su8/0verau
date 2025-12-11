@@ -55,7 +55,7 @@ struct LyricLine {
 };
 
 // Draw the lyrics for given song
-void drawLyrics(int currentLine, int rows, int cols, std::vector<Track> playlist, int currentTrack);
+void drawLyrics(int currentLine2, int rows, int cols, std::vector<Track> playlist, int currentTrack);
 // Draw function tracks and status lines
 void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist);
 // Filter playlist by search term
@@ -74,21 +74,22 @@ void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
 // fetch the and save the lyrics
 bool fetchLyricsToFile(const std::string &url, const std::string &outputFile);
+// Convert string to key code
+int keyFromString(const std::string &val);
 
 // Saving and loading music files upon start/end
 //void savePlaylistState(const std::vector<Track> &playlist, const std::string &searchTerm, bool shuffle);
 //bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bool &shuffle);
 
-// Convert string to key code
-int keyFromString(const std::string &val);
 // Load key bindings from config file
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
 sf::Music music;
 int currentLine = 0;
-using json = nlohmann::json;
 std::string HOME = (getenv("HOME") ? static_cast<std::string>(getenv("HOME")) + static_cast<std::string>("/") : "./");
 std::string LYRICFILE = HOME + ".song.lrc";
 std::string LYRICFILE2 = HOME + ".song2.lrc";
+
+using json = nlohmann::json;
 
 int main(int argc, char *argv[]) {
   if (argc < 2) { std::cerr << "You must provide some folder with music in it." << std::endl; return EXIT_FAILURE; }
@@ -274,7 +275,7 @@ int main(int argc, char *argv[]) {
   return EXIT_SUCCESS;
 }
 
-void drawLyrics(int currentLine, int rows, int cols, std::vector<Track> playlist, int currentTrack) {
+void drawLyrics(int currentLine2, int rows, int cols, std::vector<Track> playlist, int currentTrack) {
   if (music.getStatus() != sf::Music::Playing) {
     return;
   }
