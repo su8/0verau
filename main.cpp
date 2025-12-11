@@ -176,7 +176,7 @@ int main(int argc, char *argv[]) {
         music.play();
         currentTrack = highlight;
       }
-      remove(LYRICFILE.c_str());
+      std::filesystem::remove(LYRICFILE.c_str());
     }
     else if (choice == keys["PAUSE"]) {
       if (music.getStatus() == sf::Music::Playing) music.pause();
@@ -246,7 +246,7 @@ int main(int argc, char *argv[]) {
     }
     // Auto-play next track
     if (music.getStatus() == sf::Music::Stopped && currentTrack != -1) {
-      remove(LYRICFILE.c_str());
+      std::filesystem::remove(LYRICFILE.c_str());
       if (repeat) {
         music.play();
       } else {
