@@ -84,10 +84,10 @@ int keyFromString(const std::string &val);
 // Load key bindings from config file
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
 sf::Music music;
-int currentLine = 0;
 std::string HOME = (getenv("HOME") ? static_cast<std::string>(getenv("HOME")) + static_cast<std::string>("/") : "./");
 std::string LYRICFILE = HOME + ".song.lrc";
 std::string LYRICFILE2 = HOME + ".song2.lrc";
+int currentLine = 0;
 
 using json = nlohmann::json;
 
@@ -177,7 +177,7 @@ int main(int argc, char *argv[]) {
         music.play();
         currentTrack = highlight;
       }
-      std::filesystem::remove(LYRICFILE.c_str());
+      //std::filesystem::remove(LYRICFILE.c_str());
     }
     else if (choice == keys["PAUSE"]) {
       if (music.getStatus() == sf::Music::Playing) music.pause();
@@ -247,7 +247,7 @@ int main(int argc, char *argv[]) {
     }
     // Auto-play next track
     if (music.getStatus() == sf::Music::Stopped && currentTrack != -1) {
-      std::filesystem::remove(LYRICFILE.c_str());
+      //std::filesystem::remove(LYRICFILE.c_str());
       if (repeat) {
         music.play();
       } else {
@@ -281,13 +281,15 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrac
   }
   std::string apiUrl = "https://lrclib.net/api/get?artist_name=" + playlist[currentTrack].artist + "&track_name=" + playlist[currentTrack].title;
   std::string api2 = std::regex_replace(apiUrl, std::regex(" "), "%20");
-  if (!std::filesystem::exists(LYRICFILE)) {
-    if (!fetchLyricsToFile(api2, LYRICFILE)) {
+  std::string curLyrFile = std::regex_replace(playlist[currentTrack].path, std::regex(" "), "_") + static_cast<std::string>(".lrc");
+  if (!std::filesystem::exists(curLyrFile)) {
+    if (!fetchLyricsToFile(api2, curLyrFile)) {
       printw("Can't find lyrics for this song. Switch back to the menu with the songs.");
       return;
     }
   }
-  std::ifstream f(LYRICFILE);
+  //std::cout << curLyrFile << std::endl;
+  std::ifstream f(curLyrFile);
   json data = json::parse(f);
   std::string songLrc = data["syncedLyrics"];
   f.close();
