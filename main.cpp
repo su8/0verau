@@ -26,6 +26,11 @@
 #include <cstdlib>
 #include <unordered_map>
 #include <sstream>
+#include <cmath>
+#include <thread>
+#include <chrono>
+#include <iomanip>
+#include <regex>
 #include <SFML/Audio.hpp>
 #include <ncurses.h>
 #include <taglib/fileref.h>
@@ -41,6 +46,13 @@ struct Track {
   std::string duration;
 };
 
+struct LyricLine {
+  float time; // seconds
+  std::string text;
+};
+
+// Draw the lyrics for given song
+void drawLyrics(int currentLine, int rows, int cols);
 // Draw function tracks and status lines
 void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist);
 // Filter playlist by search term
@@ -49,6 +61,8 @@ std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::str
 std::vector<Track> listAudioFiles(const std::string &path);
 // Function to read metadata using TagLib
 Track readMetadata(const std::filesystem::path &filePath);
+// Parse .lrc file
+std::vector<LyricLine> loadLyrics(const std::string &filename);
 // Format seconds into mm:ss
 std::string formatTime(float duration);
 // Draw progress bar with time
@@ -62,6 +76,8 @@ void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x
 int keyFromString(const std::string &val);
 // Load key bindings from config file
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
+sf::Music music;
+int currentLine = 0;
 
 int main(int argc, char *argv[]) {
   if (argc < 2) { std::cerr << "You must provide some folder with music in it." << std::endl; return EXIT_FAILURE; }
@@ -93,10 +109,9 @@ int main(int argc, char *argv[]) {
   bool running = true;
   int showHideAlbum = 0;
   int showHideArtist = 0;
+  int showHideLyrics = 0;
   float volume = 100.f;
   std::string searchQuery;
-
-  sf::Music music;
   int currentTrack = -1;
 
   // Try to restore previous session
@@ -120,7 +135,14 @@ int main(int argc, char *argv[]) {
       status = "Stopped";
       colorPair = 3;
     }
-    drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
+    if (showHideLyrics == 0) {
+      drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
+    }
+    else {
+      drawLyrics(currentLine, rows, cols);
+      std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    }
+
     // Show progress bar if playing
     if (music.getStatus() != sf::Music::Stopped) {
       float elapsed = music.getPlayingOffset().asSeconds();
@@ -168,6 +190,9 @@ int main(int argc, char *argv[]) {
     else if (choice == keys["SHOW_HIDE_ARTIST"]) {
       showHideArtist = !showHideArtist;
     }
+    else if (choice == keys["SHOW_HIDE_LYRICS"]) {
+      showHideLyrics = !showHideLyrics;
+    }
     else if (choice == keys["SEARCH"]) {
       echo();
       curs_set(1);
@@ -179,10 +204,10 @@ int main(int argc, char *argv[]) {
       playlist.clear();
       auto allFiles = listAudioFiles(musicDir);
       /*for (auto &t : allFiles) {
-        if (t.name.find(searchQuery) != std::string::npos) {
-          playlist.push_back(t);
-        }
-      }*/
+       *       if (t.name.find(searchQuery) != std::string::npos) {
+       *         playlist.push_back(t);
+    }
+    }*/
       playlist = filterTracks(allFiles, searchQuery);
       highlight = 0;
       offset = 0;
@@ -236,6 +261,40 @@ int main(int argc, char *argv[]) {
   return EXIT_SUCCESS;
 }
 
+void drawLyrics(int currentLine, int rows, int cols) {
+  if (music.getStatus() == sf::Music::Playing) {
+    // Load lyrics
+    auto lyrics = loadLyrics("song.lrc");
+    float currentTime = music.getPlayingOffset().asSeconds();
+    float duration = music.getDuration().asSeconds();
+    //float progress = currentTime / duration;
+
+    // Find current line index
+    while (currentLine + 1 < lyrics.size() && currentTime >= lyrics[currentLine + 1].time) {
+      currentLine++;
+    }
+    // Calculate smooth scroll offset
+    float lineStartTime = lyrics[currentLine].time;
+    float lineEndTime = (currentLine + 1 < lyrics.size()) ? lyrics[currentLine + 1].time : duration;
+    float lineDuration = lineEndTime - lineStartTime;
+    float elapsedInLine = currentTime - lineStartTime;
+    float scrollOffset = (elapsedInLine / lineDuration) * 1.0f; // 1.0 = one line height
+    // Draw lyrics with fractional offset
+    int centerY = rows / 2;
+    for (int i = -3; i <= 3; i++) {
+      int idx = static_cast<int>(currentLine) + i;
+      if (idx >= 0 && idx < (int)lyrics.size()) {
+        int yPos = centerY + (int)((i - scrollOffset) * 2); // 2 = line spacing
+        if (yPos >= 0 && yPos < rows - 3) {
+          if (i == 0) attron(A_BOLD | A_STANDOUT);
+          mvprintw(yPos, (cols - lyrics[idx].text.size()) / 2, "%s", lyrics[idx].text.c_str());
+          if (i == 0) attroff(A_BOLD | A_STANDOUT);
+        }
+      }
+    }
+  }
+}
+
 // Draw function tracks and status lines
 void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist) {
   std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
@@ -270,8 +329,8 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
   if (!searchQuery.empty()) {
     mvprintw(rows - 3, 0, "Search: %s", searchQuery.c_str());
   }
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-overflow"
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wstrict-overflow"
 }
 #pragma GCC diagnostic pop
 
@@ -398,30 +457,49 @@ void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x
 
 // Configuration file to be used to save all music files
 /*void savePlaylistState(const std::vector<Track> &playlist, const std::string &searchTerm, bool shuffle) {
-  std::ofstream out(".0verauPlaylist.txt");
-  if (!out) return;
-  out << searchTerm << "\n" << shuffle << "\n";
-  for (auto &t : playlist) out << t.path << "\n";
-}*/
+ * std::ofstream out(".0verauPlaylist.txt");
+ * if (!out) return;
+ * out << searchTerm << "\n" << shuffle << "\n";
+ * for (auto &t : playlist) out << t.path << "\n";
+ } **/
 
 // Configuration file to be used to load all music files
 /*bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bool &shuffle) {
-  std::ifstream in(".0verauPlaylist.txt");
-  if (!in) return false;
-  int shuf, rep;
-  std::getline(in, searchTerm);
-  in >> shuf >> rep;
-  shuffle = shuf;
-  in.ignore();
-  playlist.clear();
-  std::string path;
-  while (std::getline(in, path)) {
-    if (std::filesystem::exists(path)) {
-      playlist.push_back({path, std::filesystem::path(path).filename().string()});
+ * std::ifstream in(".0verauPlaylist.txt");
+ * if (!in) return false;
+ * int shuf, rep;
+ * std::getline(in, searchTerm);
+ * in >> shuf >> rep;
+ * shuffle = shuf;
+ * in.ignore();
+ * playlist.clear();
+ * std::string path;
+ * while (std::getline(in, path)) {
+ *   if (std::filesystem::exists(path)) {
+ *     playlist.push_back({path, std::filesystem::path(path).filename().string()});
+ *   }
+ * }
+ * return !playlist.empty();
+ } **/
+
+// Parse .lrc file
+std::vector<LyricLine> loadLyrics(const std::string &filename) {
+  std::vector<LyricLine> lyrics;
+  std::ifstream file(filename);
+  if (!file) throw std::runtime_error("Cannot open lyrics file");
+  std::string line;
+  std::regex timeRegex(R"(\[(\d+):(\d+\.\d+)\](.*))");
+  std::smatch match;
+  while (std::getline(file, line)) {
+    if (std::regex_match(line, match, timeRegex)) {
+      float minutes = std::stof(match[1]);
+      float seconds = std::stof(match[2]);
+      std::string text = match[3];
+      lyrics.push_back({minutes * 60 + seconds, text});
     }
   }
-  return !playlist.empty();
-}*/
+  return lyrics;
+}
 
 // Convert string to key code
 int keyFromString(const std::string &val) {
@@ -435,7 +513,7 @@ std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPa
   std::unordered_map<std::string, int> keys = {
     {"UP", 'i'}, {"DOWN", 'j'}, {"PLAY", 'o'}, {"SEEKLEFT", ','}, {"SEEKRIGHT", '.'},
     {"PAUSE", 'p'}, {"QUIT", 'q'}, {"REPEAT", '@'}, {"SHOW_HIDE_ALBUM", '$'},
-    {"SHUFFLE", '!'}, {"SEARCH", '/'}, {"VOLUMEUP", '+'}, {"VOLUMEDOWN", '-'}, {"SHOW_HIDE_ARTIST", '#'},
+    {"SHUFFLE", '!'}, {"SEARCH", '/'}, {"VOLUMEUP", '+'}, {"VOLUMEDOWN", '-'}, {"SHOW_HIDE_ARTIST", '#'}, {"SHOW_HIDE_LYRICS", '%'},
   };
   std::ifstream file(configPath);
   if (!file.is_open()) { return keys; }

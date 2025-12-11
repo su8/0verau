@@ -1,5 +1,9 @@
 ![](1snap.png)
 
+### Lyrics
+
+![](2snap.png)
+
 # 0verau
 ncurses music player similar to cmus
 
@@ -36,6 +40,7 @@ SEEKLEFT=,
 SEEKRIGHT=.
 SHOW_HIDE_ALBUM=$
 SHOW_HIDE_ARTIST=#
+SHOW_HIDE_LYRICS=%
 ```
 
 ---
@@ -45,3 +50,7 @@ SHOW_HIDE_ARTIST=#
 To search for specific song, quickly **press** `/` and type a couple charaters of the requested music file. Note that **NOT** to type the charaters that control (keybindings) the music player.
 
 When you search for a song name and find it, make sure to erase the input with your backspace (above than Enter key), after that press the **search** key once again to bring you to the menu with the song files.
+
+The lyrics are harcoded to `song.lrc`, and I'm working on fetching from internet lyrics and saving them in a file, so the next time you play the same song to use this lyrics file.
+
+If you can, please fetch the lyrics yourself and overwrite the `song.lrc` manually or with a script, sorry for the additional work that I'm requesting from you.
