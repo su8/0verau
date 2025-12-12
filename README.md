@@ -14,9 +14,13 @@ make -j8  # 8 cores/threads to use in parallel compile
 sudo/doas make install
 ```
 
+# Start 0verau
+
+To start the program you must supply 2 arguments, `0verau mp3/forlder ''` the second argument is for parsing \*.m3u files for playing online stream such as https://www.internet-radio.com/stations/house/ , download the \*.m3u file and supply it as argument so you should use it like this `0verau mp3/folder online_radio_stream.m3u` , to start playing the online stream you should press `SHIFT + ^` and it will start immediately.
+
 # Requirements
 
-In Debian it's `sudo apt install libncurses5-dev libncursesw5-dev libsfml-dev libtag1-dev libmpg123-dev curl libcurl4-openssl-dev`, in your other OS's search for `lib ncurses lib sfml lib tag lib mpg123 lib curl`.
+In Debian it's `sudo apt install libncurses5-dev libncursesw5-dev libsfml-dev libtag1-dev libmpg123-dev curl libcurl4-openssl-dev libvlc-dev libvlc-bin vlc`, in your other OS's search for `lib ncurses lib sfml lib tag lib mpg123 lib curl lib vlc vlc`.
 
 ---
 
@@ -41,11 +45,14 @@ SEEKRIGHT=.
 SHOW_HIDE_ALBUM=$
 SHOW_HIDE_ARTIST=#
 SHOW_HIDE_LYRICS=%
+SHOW_HIDE_ONLINE_RADIO=^
 ```
 
 ---
 
 ### Note
+
+
 
 To search for specific song, quickly **press** `/` and type a couple charaters of the requested music file. Note that **NOT** to type the charaters that control (keybindings) the music player.
 

@@ -25,6 +25,7 @@
 #include <fstream>
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 #include <unordered_map>
 #include <sstream>
 #include <cmath>
@@ -38,6 +39,7 @@
 #include <taglib/tag.h>
 #include <mpg123.h>
 #include <curl/curl.h>
+#include <vlc/vlc.h>
 #include "json.hpp"
 
 struct Track {
@@ -57,7 +59,7 @@ struct LyricLine {
 // Draw the lyrics for given song
 void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrack);
 // Draw function tracks and status lines
-void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist);
+void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist, char *vlcTitle);
 // Filter playlist by search term
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term);
 // List audio files in directory
@@ -76,10 +78,11 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* use
 bool fetchLyricsToFile(const std::string &url, const std::string &outputFile);
 // Convert string to key code
 int keyFromString(const std::string &val);
+// Trim whitespace
+static inline std::string trim(const std::string &s);
+// Parse .m3u playlist
+std::vector<std::string> parseM3U(const std::string &filename);
 
-// Saving and loading music files upon start/end
-//void savePlaylistState(const std::vector<Track> &playlist, const std::string &searchTerm, bool shuffle);
-//bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bool &shuffle);
 
 // Load key bindings from config file
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
@@ -89,7 +92,7 @@ int currentLine = 0;
 using json = nlohmann::json;
 
 int main(int argc, char *argv[]) {
-  if (argc < 2) { std::cerr << "You must provide some folder with music in it." << std::endl; return EXIT_FAILURE; }
+  if (argc < 2) { std::cerr << "You must provide some folder with music in it or radio.m3u file for online radio stations." << std::endl; return EXIT_FAILURE; }
   std::string musicDir = argv[1]; // Change to your music folder
   auto playlist = listAudioFiles(musicDir);
   if (playlist.empty()) { std::cerr << "No audio files found in " << musicDir << "\n"; return EXIT_FAILURE; }
@@ -119,9 +122,19 @@ int main(int argc, char *argv[]) {
   int showHideAlbum = 0;
   int showHideArtist = 0;
   int showHideLyrics = 0;
+  int showOnlineRadio = 0;
   float volume = 100.f;
   std::string searchQuery;
   int currentTrack = -1;
+  libvlc_instance_t *vlc = libvlc_new(0, nullptr);
+  libvlc_media_player_t *player = nullptr;
+  bool playing = false; // vlc related variable
+  std::string m3u = argv[2];
+  if (!strcmp(argv[2], "")) {
+    m3u = "";
+  }
+  std::vector<std::string> streams = parseM3U(m3u);
+  char *title = "";
 
   // Try to restore previous session
   //loadPlaylistState(playlist, searchQuery, shuffle);
@@ -145,7 +158,18 @@ int main(int argc, char *argv[]) {
       colorPair = 3;
     }
     if (showHideLyrics == 0) {
-      drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
+      drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist, title);
+    }
+    else if (showOnlineRadio == 1) {
+      libvlc_media_t *currentMedia = libvlc_media_player_get_media(player);
+      if (currentMedia) {
+        libvlc_media_parse(currentMedia);
+        title = libvlc_media_get_meta(currentMedia, libvlc_meta_Title);
+        //drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist, title);
+        libvlc_media_release(currentMedia);
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        //mvprintw(1, 0, "Now Playing %s", title);
+      }
     }
     else {
       drawLyrics(rows, cols, playlist, currentTrack);
@@ -202,6 +226,28 @@ int main(int argc, char *argv[]) {
     }
     else if (choice == keys["SHOW_HIDE_LYRICS"]) {
       showHideLyrics = !showHideLyrics;
+    }
+    else if (choice == keys["SHOW_HIDE_ONLINE_RADIO"]) {
+      if (!playing && m3u != "") {
+        if (!streams.empty()) {
+          libvlc_media_t *media = libvlc_media_new_location(vlc, streams[highlight].c_str());
+          player = libvlc_media_player_new_from_media(media);
+          libvlc_media_release(media);
+          libvlc_media_player_play(player);
+          playing = true;
+          showOnlineRadio = 1;
+        }
+      }
+      else if (playing && player && showOnlineRadio == 1) {
+        libvlc_media_player_stop(player);
+        libvlc_media_player_release(player);
+        playing = false;
+        showOnlineRadio = 0;
+        if (*title) {
+          libvlc_free(title);
+          title = "";
+        }
+      }
     }
     else if (choice == keys["SEARCH"]) {
       echo();
@@ -265,13 +311,41 @@ int main(int argc, char *argv[]) {
       }
     }
   }
-  // Save state before exit
-  //savePlaylistState(playlist, searchQuery, shuffle);
+  if (player) {
+    libvlc_media_player_stop(player);
+    libvlc_media_player_release(player);
+  }
+  libvlc_release(vlc);
   // Cleanup ncurses
   endwin();
   return EXIT_SUCCESS;
 }
 
+// Trim whitespace
+static inline std::string trim(const std::string &s) {
+  auto start = s.find_first_not_of(" \t\r\n");
+  auto end = s.find_last_not_of(" \t\r\n");
+  return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
+}
+
+// Parse .m3u playlist
+std::vector<std::string> parseM3U(const std::string &filename) {
+  std::vector<std::string> urls;
+  std::ifstream file(filename);
+  if (!file) {
+    return urls;
+  }
+  std::string line;
+  while (std::getline(file, line)) {
+    line = trim(line);
+    if (line.empty() || line[0] == '#') continue;
+    urls.push_back(line);
+  }
+  return urls;
+}
+
+
+// Function to draw the lyrics
 void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrack) {
   if (music.getStatus() != sf::Music::Playing) {
     return;
@@ -330,8 +404,14 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrac
 }
 
 // Draw function tracks and status lines
-void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist) {
-  std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
+void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist, char *vlcTitle) {
+  std::string trackName;
+  if (!strcmp(vlcTitle, "")) {
+    trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
+  }
+  else {
+    trackName = vlcTitle;
+  }
   if (static_cast<int>(trackName.size()) > cols - 20) {
     trackName = trackName.substr(0, cols - 23) + "...";
   }
@@ -489,33 +569,6 @@ void drawProgressBarWithTime(float elapsed, float total, int width, int y, int x
   printw(" %s", formatTime(total).c_str());
 }
 
-// Configuration file to be used to save all music files
-/*void savePlaylistState(const std::vector<Track> &playlist, const std::string &searchTerm, bool shuffle) {
- * std::ofstream out(".0verauPlaylist.txt");
- * if (!out) return;
- * out << searchTerm << "\n" << shuffle << "\n";
- * for (auto &t : playlist) out << t.path << "\n";
- * } **/
-
-// Configuration file to be used to load all music files
-/*bool loadPlaylistState(std::vector<Track> &playlist, std::string &searchTerm, bool &shuffle) {
- * std::ifstream in(".0verauPlaylist.txt");
- * if (!in) return false;
- * int shuf, rep;
- * std::getline(in, searchTerm);
- * in >> shuf >> rep;
- * shuffle = shuf;
- * in.ignore();
- * playlist.clear();
- * std::string path;
- * while (std::getline(in, path)) {
- *   if (std::filesystem::exists(path)) {
- *     playlist.push_back({path, std::filesystem::path(path).filename().string()});
- *   }
- * }
- * return !playlist.empty();
- * } **/
-
 // Parse .lrc file
 std::vector<LyricLine> loadLyrics(const std::string &filename) {
   std::vector<LyricLine> lyrics;
@@ -612,7 +665,7 @@ int keyFromString(const std::string &val) {
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath) {
   std::unordered_map<std::string, int> keys = {
     {"UP", 'i'}, {"DOWN", 'j'}, {"PLAY", 'o'}, {"SEEKLEFT", ','}, {"SEEKRIGHT", '.'},
-    {"PAUSE", 'p'}, {"QUIT", 'q'}, {"REPEAT", '@'}, {"SHOW_HIDE_ALBUM", '$'},
+    {"PAUSE", 'p'}, {"QUIT", 'q'}, {"REPEAT", '@'}, {"SHOW_HIDE_ALBUM", '$'}, {"SHOW_HIDE_ONLINE_RADIO", '^'},
     {"SHUFFLE", '!'}, {"SEARCH", '/'}, {"VOLUMEUP", '+'}, {"VOLUMEDOWN", '-'}, {"SHOW_HIDE_ARTIST", '#'}, {"SHOW_HIDE_LYRICS", '%'},
   };
   std::ifstream file(configPath);
