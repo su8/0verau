@@ -92,7 +92,7 @@ int currentLine = 0;
 using json = nlohmann::json;
 
 int main(int argc, char *argv[]) {
-  if (argc < 3) { std::cerr << "You must provide some folder with music in it or radio.m3u (as second argument) file for online radio stations." << std::endl; return EXIT_FAILURE; }
+  if (argc < 2) { std::cerr << "You must provide some folder with music in it or radio.m3u (as second argument) file for online radio stations." << std::endl; return EXIT_FAILURE; }
   std::string musicDir = argv[1]; // Change to your music folder
   auto playlist = listAudioFiles(musicDir);
   if (playlist.empty()) { std::cerr << "No audio files found in " << musicDir << "\n"; return EXIT_FAILURE; }
