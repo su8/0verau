@@ -228,11 +228,25 @@ int main(int argc, char *argv[]) {
     }
     else if (choice == keys["VOLUMEUP"]) {
       volume = std::min(100.f, volume + 5.f);
-      music.setVolume(volume);
+      if (showOnlineRadio == 0) {
+        music.setVolume(volume);
+      }
+      else {
+        if (player) {
+          libvlc_audio_set_volume(player, volume);
+        }
+      }
     }
     else if (choice == keys["VOLUMEDOWN"]) {
       volume = std::max(0.f, volume - 5.f);
-      music.setVolume(volume);
+      if (showOnlineRadio == 0) {
+        music.setVolume(volume);
+      }
+      else {
+        if (player) {
+          libvlc_audio_set_volume(player, volume);
+        }
+      }
     }
     else if (choice == keys["SHUFFLE"]) {
       shuffle = !shuffle;
