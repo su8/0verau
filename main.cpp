@@ -64,8 +64,12 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term);
 // List audio files in directory
 std::vector<Track> listAudioFiles(const std::string &path);
+// List m3u online radio files in directory
+std::vector<Track> listM3uFiles(const std::string &path);
 // Function to read metadata using TagLib
 Track readMetadata(const std::filesystem::path &filePath);
+// Function to read the m3u metadata
+Track readM3uMetadata(const std::filesystem::path &filePath);
 // Parse .lrc file
 std::vector<LyricLine> loadLyrics(const std::string &filename);
 // Format seconds into mm:ss
@@ -81,8 +85,8 @@ int keyFromString(const std::string &val);
 // Trim whitespace
 static inline std::string trim(const std::string &s);
 // Parse .m3u playlist
-std::vector<std::string> parseM3U(const std::string &filename);
-
+std::vector<std::string> parseM3U(const std::vector<std::string> &filename);
+std::vector<std::string> listM3u(const std::string &path);
 
 // Load key bindings from config file
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
@@ -92,7 +96,7 @@ int currentLine = 0;
 using json = nlohmann::json;
 
 int main(int argc, char *argv[]) {
-  if (argc < 2) { std::cerr << "You must provide some folder with music in it or radio.m3u (as second argument) file for online radio stations." << std::endl; return EXIT_FAILURE; }
+  if (argc < 2) { std::cerr << "You must provide some folder with music in it and if you have radio.m3u folder (as second argument) for listening to online radio stations." << std::endl; return EXIT_FAILURE; }
   std::string musicDir = argv[1]; // Change to your music folder
   auto playlist = listAudioFiles(musicDir);
   if (playlist.empty()) { std::cerr << "No audio files found in " << musicDir << "\n"; return EXIT_FAILURE; }
@@ -128,15 +132,13 @@ int main(int argc, char *argv[]) {
   int currentTrack = -1;
   libvlc_instance_t *vlc = libvlc_new(0, nullptr);
   libvlc_media_player_t *player = nullptr;
-  bool playing = false; // vlc related variable
-  std::string m3u = "";
+  bool vlcPlaying = false; // vlc related variable
+  std::vector<Track> playlist2;
+  std::vector<std::string> parsedM3u;
   if (argc > 2) {
-    m3u = argv[2];
+    playlist2 = listM3uFiles(argv[2]);
+    parsedM3u = parseM3U(listM3u(argv[2]));
   }
-  std::vector<std::string> streams = parseM3U(m3u);
-
-  // Try to restore previous session
-  //loadPlaylistState(playlist, searchQuery, shuffle);
 
   while (running) {
     //clear();
@@ -146,18 +148,21 @@ int main(int argc, char *argv[]) {
     // Now Playing section
     std::string status;
     int colorPair = 3; // Default: stopped
-    if (music.getStatus() == sf::Music::Playing) {
+    if (music.getStatus() == sf::Music::Playing || vlcPlaying) {
       status = "Playing";
       colorPair = 1;
-    } else if (music.getStatus() == sf::Music::Paused) {
+    } else if (music.getStatus() == sf::Music::Paused || !vlcPlaying) {
       status = "Paused";
       colorPair = 2;
     } else {
       status = "Stopped";
       colorPair = 3;
     }
-    if (showHideLyrics == 0) {
+    if (showHideLyrics == 0 && showOnlineRadio == 0) {
       drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
+    }
+    else if (showOnlineRadio == 1) {
+      drawStatus(currentTrack, rows, cols, playlist2, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
     }
     else {
       drawLyrics(rows, cols, playlist, currentTrack);
@@ -173,24 +178,54 @@ int main(int argc, char *argv[]) {
     wrefresh(stdscr);
     choice = getch();
     if (choice == keys["UP"]) {
-      highlight = (highlight - 1 + playlist.size()) % playlist.size();;
+      if (showOnlineRadio == 0) {
+        highlight = (highlight - 1 + playlist.size()) % playlist.size();
+      }
+      else {
+        highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
+      }
     }
     else if (choice == keys["DOWN"]) {
-      highlight = (highlight + 1) % playlist.size();
+      if (showOnlineRadio == 0) {
+        highlight = (highlight + 1) % playlist.size();
+      }
+      else {
+        highlight = (highlight + 1) % playlist2.size();
+      }
     }
     else if (choice == keys["PLAY"]) {
-      if (!music.openFromFile(playlist[highlight].path)) {
-        mvprintw(rows - 1, 0, "Error: Cannot play file.");
-      } else {
-        music.setVolume(volume);
-        music.play();
-        currentTrack = highlight;
+      if (showOnlineRadio == 0) {
+        if (!music.openFromFile(playlist[highlight].path)) {
+          mvprintw(rows - 1, 0, "Error: Cannot play file.");
+        } else {
+          music.setVolume(volume);
+          music.play();
+          currentTrack = highlight;
+        }
       }
-      //std::filesystem::remove(LYRICFILE.c_str());
+      else {
+        if (!playlist2.empty()) {
+          if (player) {
+            libvlc_media_player_stop(player);
+            libvlc_media_player_release(player);
+          }
+          libvlc_media_t *media = libvlc_media_new_location(vlc, parsedM3u[highlight].c_str());
+          player = libvlc_media_player_new_from_media(media);
+          libvlc_media_release(media);
+          libvlc_media_player_play(player);
+          vlcPlaying = true;
+          currentTrack = highlight;
+        }
+      }
     }
     else if (choice == keys["PAUSE"]) {
       if (music.getStatus() == sf::Music::Playing) music.pause();
       else if (music.getStatus() == sf::Music::Paused) music.play();
+      if (vlcPlaying && player) {
+        libvlc_media_player_stop(player);
+        libvlc_media_player_release(player);
+        vlcPlaying = false;
+      }
     }
     else if (choice == keys["VOLUMEUP"]) {
       volume = std::min(100.f, volume + 5.f);
@@ -216,22 +251,7 @@ int main(int argc, char *argv[]) {
       showHideLyrics = !showHideLyrics;
     }
     else if (choice == keys["SHOW_HIDE_ONLINE_RADIO"]) {
-      if (!playing && m3u != "") {
-        if (!streams.empty()) {
-          libvlc_media_t *media = libvlc_media_new_location(vlc, streams[highlight].c_str());
-          player = libvlc_media_player_new_from_media(media);
-          libvlc_media_release(media);
-          libvlc_media_player_play(player);
-          playing = true;
-          showOnlineRadio = 1;
-        }
-      }
-      else if (playing && player && showOnlineRadio == 1) {
-        libvlc_media_player_stop(player);
-        libvlc_media_player_release(player);
-        playing = false;
-        showOnlineRadio = 0;
-      }
+      showOnlineRadio = !showOnlineRadio;
     }
     else if (choice == keys["SEARCH"]) {
       echo();
@@ -243,11 +263,6 @@ int main(int argc, char *argv[]) {
       // Filter playlist
       playlist.clear();
       auto allFiles = listAudioFiles(musicDir);
-      /*for (auto &t : allFiles) {
-       *       if (t.name.find(searchQuery) != std::string::npos) {
-       *         playlist.push_back(t);
-    }
-    }*/
       playlist = filterTracks(allFiles, searchQuery);
       highlight = 0;
       offset = 0;
@@ -274,23 +289,24 @@ int main(int argc, char *argv[]) {
     }
     // Auto-play next track
     if (music.getStatus() == sf::Music::Stopped && currentTrack != -1) {
-      //std::filesystem::remove(LYRICFILE.c_str());
-      if (repeat) {
-        music.play();
-      } else {
-        if (shuffle) {
-          static std::mt19937 rng(std::random_device{}());
-          std::uniform_int_distribution<int> dist(0, playlist.size() - 1);
-          highlight = dist(rng);
-        } else {
-          highlight = (highlight + 1) % playlist.size();
-        }
-        if (!music.openFromFile(playlist[highlight].path)) {
-          mvprintw(rows - 1, 0, "Error: Cannot play file.");
-        } else {
-          music.setVolume(volume);
+      if (showOnlineRadio == 0) {
+        if (repeat) {
           music.play();
-          currentTrack = highlight;
+        } else {
+          if (shuffle) {
+            static std::mt19937 rng(std::random_device{}());
+            std::uniform_int_distribution<int> dist(0, playlist.size() - 1);
+            highlight = dist(rng);
+          } else {
+            highlight = (highlight + 1) % playlist.size();
+          }
+          if (!music.openFromFile(playlist[highlight].path)) {
+            mvprintw(rows - 1, 0, "Error: Cannot play file.");
+          } else {
+            music.setVolume(volume);
+            music.play();
+            currentTrack = highlight;
+          }
         }
       }
     }
@@ -313,21 +329,22 @@ static inline std::string trim(const std::string &s) {
 }
 
 // Parse .m3u playlist
-std::vector<std::string> parseM3U(const std::string &filename) {
+std::vector<std::string> parseM3U(const std::vector<std::string> &filename) {
   std::vector<std::string> urls;
-  std::ifstream file(filename);
-  if (!file) {
-    return urls;
-  }
-  std::string line;
-  while (std::getline(file, line)) {
-    line = trim(line);
-    if (line.empty() || line[0] == '#') continue;
-    urls.push_back(line);
+  for (auto &x : filename) {
+    std::ifstream file(x);
+    if (!file) {
+      return urls;
+    }
+    std::string line;
+    while (std::getline(file, line)) {
+      line = trim(line);
+      if (line.empty() || line[0] == '#') continue;
+      urls.push_back(line);
+    }
   }
   return urls;
 }
-
 
 // Function to draw the lyrics
 void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrack) {
@@ -462,6 +479,46 @@ std::vector<Track> listAudioFiles(const std::string &path) {
   return files;
 }
 
+// List m3u online radio files in directory and reads the metadata
+std::vector<Track> listM3uFiles(const std::string &path) {
+  std::vector<Track> files;
+  try {
+    for (const auto &entry : std::filesystem::directory_iterator(path)) {
+      if (entry.is_regular_file()) {
+        std::string ext = entry.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        if (ext == ".m3u") {
+          files.push_back(readM3uMetadata(entry.path()));
+          //files.push_back({entry.path().string(), entry.path().filename().string()});
+        }
+      }
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "Error reading directory: " << e.what() << "\n";
+  }
+  return files;
+}
+
+// List only the .m3u files and store their paths
+std::vector<std::string> listM3u(const std::string &path) {
+  std::vector<std::string> files;
+  try {
+    for (const auto &entry : std::filesystem::directory_iterator(path)) {
+      if (entry.is_regular_file()) {
+        std::string ext = entry.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        if (ext == ".m3u") {
+          files.push_back(entry.path());
+          //files.push_back({entry.path().string(), entry.path().filename().string()});
+        }
+      }
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "Error reading directory: " << e.what() << "\n";
+  }
+  return files;
+}
+
 // Function to read metadata using TagLib
 Track readMetadata(const std::filesystem::path &filePath) {
   Track info;
@@ -515,6 +572,17 @@ Track readMetadata(const std::filesystem::path &filePath) {
     mpg123_delete(mh);
     mpg123_exit();
   }
+  return info;
+}
+
+// Function to read the m3u metadata
+Track readM3uMetadata(const std::filesystem::path &filePath) {
+  Track info;
+  info.path = filePath.string();
+  info.title = filePath.filename().string();
+  info.artist = "Unknown Artist";
+  info.album = "Unknown Album";
+  info.duration = "";
   return info;
 }
 
@@ -574,6 +642,7 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* use
     return totalSize;
 }
 
+// fetch the and save the lyrics
 bool fetchLyricsToFile(const std::string &url, const std::string &outputFile) {
     CURL* curl;
     CURLcode res;

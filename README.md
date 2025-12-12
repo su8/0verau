@@ -16,7 +16,7 @@ sudo/doas make install
 
 ### Listening to online radio
 
-To start the program you must supply 2 arguments, `0verau mp3/folder 'online_radio_stream.m3u'` , so you can choose between playing online stream/or local \*.mp3 files, for radio streams the most popular is https://www.internet-radio.com/stations/house/ , download the \*.m3u file and supply it as argument so you should use it like this `0verau mp3/folder online_radio_stream.m3u` , to start playing the online stream you should press `SHIFT + ^` and it will start immediately.
+To start the program you must supply 2 arguments, `0verau mp3/folder 'm3u/folder'` , so you can choose between playing online stream/or local \*.mp3 files, for radio streams the most popular is https://www.internet-radio.com/stations/house/ , download the \*.m3u file and supply it as argument so you should use it like this `0verau mp3/folder m3u/folder` , to start playing the online stream you should press `SHIFT + ^` and it will list the `m3u` radio stations.
 
 # Requirements
 
