@@ -14,9 +14,9 @@ make -j8  # 8 cores/threads to use in parallel compile
 sudo/doas make install
 ```
 
-# Start 0verau
+### Listening to online radio
 
-To start the program you must supply 2 arguments, `0verau mp3/forlder ''` the second argument is for parsing \*.m3u files for playing online stream such as https://www.internet-radio.com/stations/house/ , download the \*.m3u file and supply it as argument so you should use it like this `0verau mp3/folder online_radio_stream.m3u` , to start playing the online stream you should press `SHIFT + ^` and it will start immediately.
+To start the program you must supply 2 arguments, `0verau mp3/folder 'online_radio_stream.m3u'` , so you can choose between playing online stream/or local \*.mp3 files, for radio streams the most popular is https://www.internet-radio.com/stations/house/ , download the \*.m3u file and supply it as argument so you should use it like this `0verau mp3/folder online_radio_stream.m3u` , to start playing the online stream you should press `SHIFT + ^` and it will start immediately.
 
 # Requirements
 

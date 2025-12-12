@@ -92,7 +92,7 @@ int currentLine = 0;
 using json = nlohmann::json;
 
 int main(int argc, char *argv[]) {
-  if (argc < 3) { std::cerr << "You must provide some folder with music in it or radio.m3u file for online radio stations." << std::endl; return EXIT_FAILURE; }
+  if (argc < 3) { std::cerr << "You must provide some folder with music in it or radio.m3u (as second argument) file for online radio stations." << std::endl; return EXIT_FAILURE; }
   std::string musicDir = argv[1]; // Change to your music folder
   auto playlist = listAudioFiles(musicDir);
   if (playlist.empty()) { std::cerr << "No audio files found in " << musicDir << "\n"; return EXIT_FAILURE; }
@@ -129,9 +129,9 @@ int main(int argc, char *argv[]) {
   libvlc_instance_t *vlc = libvlc_new(0, nullptr);
   libvlc_media_player_t *player = nullptr;
   bool playing = false; // vlc related variable
-  std::string m3u = argv[2];
-  if (!strcmp(argv[2], "")) {
-    m3u = "";
+  std::string m3u = "";
+  if (argc > 2) {
+    m3u = argv[2];
   }
   std::vector<std::string> streams = parseM3U(m3u);
 
