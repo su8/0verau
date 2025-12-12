@@ -261,9 +261,16 @@ int main(int argc, char *argv[]) {
       getnstr(buf, 255);
       searchQuery = buf;
       // Filter playlist
-      playlist.clear();
-      auto allFiles = listAudioFiles(musicDir);
-      playlist = filterTracks(allFiles, searchQuery);
+      if (showOnlineRadio == 0) {
+        playlist.clear();
+        auto allFiles = listAudioFiles(musicDir);
+        playlist = filterTracks(allFiles, searchQuery);
+      }
+      else {
+        playlist2.clear();
+        auto allFiles = listM3uFiles(argv[2]);
+        playlist2 = filterTracks(allFiles, searchQuery);
+      }
       highlight = 0;
       offset = 0;
       noecho();
