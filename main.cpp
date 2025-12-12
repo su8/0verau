@@ -267,9 +267,11 @@ int main(int argc, char *argv[]) {
         playlist = filterTracks(allFiles, searchQuery);
       }
       else {
-        playlist2.clear();
-        auto allFiles = listM3uFiles(argv[2]);
-        playlist2 = filterTracks(allFiles, searchQuery);
+        if (argc > 2) {
+          playlist2.clear();
+          auto allFiles = listM3uFiles(argv[2]);
+          playlist2 = filterTracks(allFiles, searchQuery);
+        }
       }
       highlight = 0;
       offset = 0;
