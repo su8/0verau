@@ -200,7 +200,6 @@ int main(int argc, char *argv[]) {
         } else {
           music.setVolume(volume);
           music.play();
-          currentTrack = highlight;
         }
       }
       else {
@@ -214,9 +213,9 @@ int main(int argc, char *argv[]) {
           libvlc_media_release(media);
           libvlc_media_player_play(player);
           vlcPlaying = true;
-          currentTrack = highlight;
         }
       }
+      currentTrack = highlight;
     }
     else if (choice == keys["PAUSE"]) {
       if (music.getStatus() == sf::Music::Playing) music.pause();
@@ -252,6 +251,7 @@ int main(int argc, char *argv[]) {
     }
     else if (choice == keys["SHOW_HIDE_ONLINE_RADIO"]) {
       showOnlineRadio = !showOnlineRadio;
+      highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
     }
     else if (choice == keys["SEARCH"]) {
       echo();
