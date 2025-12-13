@@ -241,12 +241,16 @@ int main(int argc, char *argv[]) {
       }
     }
     else if (choice == keys["PAUSE"]) {
-      if (music.getStatus() == sf::Music::Playing) music.pause();
-      else if (music.getStatus() == sf::Music::Paused) music.play();
-      if (vlcPlaying && player) {
+      if (vlcPlaying) {
         libvlc_media_player_stop(player);
         libvlc_media_player_release(player);
         vlcPlaying = false;
+      }
+      if (music.getStatus() == sf::Music::Playing) {
+        music.pause();
+      }
+      else if (music.getStatus() == sf::Music::Paused) {
+        music.play();
       }
     }
     else if (choice == keys["VOLUMEUP"] || choice == keys["VOLUMEDOWN"]) {
