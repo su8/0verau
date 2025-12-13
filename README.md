@@ -6,7 +6,7 @@
 
 ### Online radio
 
-![](snap3.png)
+![](3snap.png)
 
 # 0verau
 ncurses music player similar to cmus
