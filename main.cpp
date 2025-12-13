@@ -213,7 +213,11 @@ int main(int argc, char *argv[]) {
       }
     }
     else if (choice == keys["PLAY"]) {
-      if (showOnlineRadio == 0 && !vlcPlaying) {
+      if (player) {
+        libvlc_media_player_stop(player);
+        libvlc_media_player_release(player);
+      }
+      if (showOnlineRadio == 0) {
         if (!music.openFromFile(playlist[highlight].path)) {
           mvprintw(rows - 1, 0, "Error: Cannot play file.");
         } else {
@@ -224,10 +228,6 @@ int main(int argc, char *argv[]) {
       }
       else {
         if (!playlist2.empty()) {
-          if (player) {
-            libvlc_media_player_stop(player);
-            libvlc_media_player_release(player);
-          }
           media = libvlc_media_new_location(vlc, parsedM3u[highlight].c_str());
           // Attach event listener for metadata changes
           libvlc_event_manager_t *eventManager = libvlc_media_event_manager(media);
