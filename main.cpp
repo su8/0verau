@@ -213,7 +213,7 @@ int main(int argc, char *argv[]) {
       }
     }
     else if (choice == keys["PLAY"]) {
-      if (showOnlineRadio == 0) {
+      if (showOnlineRadio == 0 && !vlcPlaying) {
         if (!music.openFromFile(playlist[highlight].path)) {
           mvprintw(rows - 1, 0, "Error: Cannot play file.");
         } else {
@@ -223,7 +223,7 @@ int main(int argc, char *argv[]) {
         currentTrack = highlight;
       }
       else {
-        if (!playlist2.empty()) {
+        if (!playlist2.empty() && !vlcPlaying) {
           if (player) {
             libvlc_media_player_stop(player);
             libvlc_media_player_release(player);
@@ -237,6 +237,9 @@ int main(int argc, char *argv[]) {
           libvlc_media_player_play(player);
           vlcPlaying = true;
           currentTrack = highlight;
+          if (music.getStatus() == sf::Music::Playing) {
+            music.pause();
+          }
         }
       }
     }
@@ -249,7 +252,7 @@ int main(int argc, char *argv[]) {
       if (music.getStatus() == sf::Music::Playing) {
         music.pause();
       }
-      else if (music.getStatus() == sf::Music::Paused) {
+      else if (music.getStatus() == sf::Music::Paused && !vlcPlaying) {
         music.play();
       }
     }
