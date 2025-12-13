@@ -98,7 +98,7 @@ void signal_handler(int);
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
 sf::Music music;
 int currentLine = 0;
-char songMeta[4096] = {'\0'};
+std::string songMeta = "";
 std::atomic<bool> running(true);
 libvlc_media_t *media = nullptr;
 
@@ -139,7 +139,7 @@ int main(int argc, char *argv[]) {
   float volume = 100.f;
   std::string searchQuery;
   int currentTrack = -1;
-  const char* vlc_args[] = {
+  const char *vlc_args[] = {
     "--no-xlib", // Avoid X11 dependency for headless
     "--quiet"
   };
@@ -355,15 +355,15 @@ int main(int argc, char *argv[]) {
 }
 
 // Event callback for metadata changes
-static void handle_event(const libvlc_event_t* event, void* user_data) {
+static void handle_event(const libvlc_event_t *event, void *user_data) {
   if (event->type == libvlc_MediaMetaChanged) {
-    libvlc_media_t *media2 = static_cast<libvlc_media_t*>(user_data);
+    libvlc_media_t *media2 = static_cast<libvlc_media_t *>(user_data);
     //const char *title = libvlc_media_get_meta(media2, libvlc_meta_Title);
     //const char *title2 = libvlc_media_get_meta(media2, libvlc_meta_Artist);
     //const char *title3 = libvlc_media_get_meta(media2, libvlc_meta_Album);
     const char *title4 = libvlc_media_get_meta(media2, libvlc_meta_NowPlaying);
     if (title4) {
-      snprintf(songMeta, sizeof(songMeta) - 1, "%s", title4);
+      songMeta = title4;
     }
   }
 }
