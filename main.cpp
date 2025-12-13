@@ -98,7 +98,7 @@ void signal_handler(int);
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
 sf::Music music;
 int currentLine = 0;
-const char *vlcTitle = "";
+char songMeta[4096] = {'\0'};
 std::atomic<bool> running(true);
 libvlc_media_t *media = nullptr;
 
@@ -358,9 +358,12 @@ int main(int argc, char *argv[]) {
 static void handle_event(const libvlc_event_t* event, void* user_data) {
   if (event->type == libvlc_MediaMetaChanged) {
     libvlc_media_t *media2 = static_cast<libvlc_media_t*>(user_data);
-    const char *title = libvlc_media_get_meta(media2, libvlc_meta_Title);
-    if (title) {
-      vlcTitle = title;
+    //const char *title = libvlc_media_get_meta(media2, libvlc_meta_Title);
+    //const char *title2 = libvlc_media_get_meta(media2, libvlc_meta_Artist);
+    //const char *title3 = libvlc_media_get_meta(media2, libvlc_meta_Album);
+    const char *title4 = libvlc_media_get_meta(media2, libvlc_meta_NowPlaying);
+    if (title4) {
+      snprintf(songMeta, sizeof(songMeta) - 1, "%s", title4);
     }
   }
 }
@@ -460,7 +463,7 @@ void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlis
     trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
   }
   else {
-    trackName = vlcTitle;
+    trackName = songMeta;
   }
   if (static_cast<int>(trackName.size()) > cols - 20) {
     trackName = trackName.substr(0, cols - 23) + "...";
