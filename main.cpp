@@ -197,7 +197,9 @@ int main(int argc, char *argv[]) {
         highlight = (highlight - 1 + playlist.size()) % playlist.size();
       }
       else {
-        highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
+        if (!playlist2.empty()) {
+          highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
+        }
       }
     }
     else if (choice == keys["DOWN"]) {
@@ -205,7 +207,9 @@ int main(int argc, char *argv[]) {
         highlight = (highlight + 1) % playlist.size();
       }
       else {
-        highlight = (highlight + 1) % playlist2.size();
+        if (!playlist2.empty()) {
+          highlight = (highlight + 1) % playlist2.size();
+        }
       }
     }
     else if (choice == keys["PLAY"]) {
@@ -216,6 +220,7 @@ int main(int argc, char *argv[]) {
           music.setVolume(volume);
           music.play();
         }
+        currentTrack = highlight;
       }
       else {
         if (!playlist2.empty()) {
@@ -231,9 +236,9 @@ int main(int argc, char *argv[]) {
           libvlc_media_release(media);
           libvlc_media_player_play(player);
           vlcPlaying = true;
+          currentTrack = highlight;
         }
       }
-      currentTrack = highlight;
     }
     else if (choice == keys["PAUSE"]) {
       if (music.getStatus() == sf::Music::Playing) music.pause();
@@ -272,7 +277,9 @@ int main(int argc, char *argv[]) {
     }
     else if (choice == keys["SHOW_HIDE_ONLINE_RADIO"]) {
       showOnlineRadio = !showOnlineRadio;
-      highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
+      if (!playlist2.empty()) {
+        highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
+      }
     }
     else if (choice == keys["SEARCH"]) {
       echo();
