@@ -223,7 +223,7 @@ int main(int argc, char *argv[]) {
         currentTrack = highlight;
       }
       else {
-        if (!playlist2.empty() && !vlcPlaying) {
+        if (!playlist2.empty()) {
           if (player) {
             libvlc_media_player_stop(player);
             libvlc_media_player_release(player);
@@ -284,6 +284,9 @@ int main(int argc, char *argv[]) {
     }
     else if (choice == keys["SHOW_HIDE_ONLINE_RADIO"]) {
       showOnlineRadio = !showOnlineRadio;
+      if (vlcPlaying) {
+        music.pause();
+      }
       if (!playlist2.empty()) {
         highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
       }
