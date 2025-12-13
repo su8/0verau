@@ -33,6 +33,8 @@
 #include <chrono>
 #include <iomanip>
 #include <regex>
+#include <atomic>
+#include <csignal>
 #include <SFML/Audio.hpp>
 #include <ncurses.h>
 #include <taglib/fileref.h>
@@ -59,7 +61,7 @@ struct LyricLine {
 // Draw the lyrics for given song
 void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrack);
 // Draw function tracks and status lines
-void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist);
+void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist, bool showVlcTitle);
 // Filter playlist by search term
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term);
 // List audio files in directory
@@ -87,16 +89,24 @@ static inline std::string trim(const std::string &s);
 // Parse .m3u playlist
 std::vector<std::string> parseM3U(const std::vector<std::string> &filename);
 std::vector<std::string> listM3u(const std::string &path);
+// Event callback for metadata changes (libvlc)
+static void handle_event(const libvlc_event_t* event, void* user_data);
+// Signal handler for Ctrl+C
+void signal_handler(int);
 
 // Load key bindings from config file
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
 sf::Music music;
 int currentLine = 0;
+const char *vlcTitle = "";
+std::atomic<bool> running(true);
+libvlc_media_t *media = nullptr;
 
 using json = nlohmann::json;
 
 int main(int argc, char *argv[]) {
   if (argc < 2) { std::cerr << "You must provide some folder with music in it and if you have radio.m3u folder (as second argument) for listening to online radio stations." << std::endl; return EXIT_FAILURE; }
+  std::signal(SIGINT, signal_handler);
   std::string musicDir = argv[1]; // Change to your music folder
   auto playlist = listAudioFiles(musicDir);
   if (playlist.empty()) { std::cerr << "No audio files found in " << musicDir << "\n"; return EXIT_FAILURE; }
@@ -122,7 +132,6 @@ int main(int argc, char *argv[]) {
   int choice;
   bool shuffle = false;
   bool repeat = false;
-  bool running = true;
   int showHideAlbum = 0;
   int showHideArtist = 0;
   int showHideLyrics = 0;
@@ -163,10 +172,11 @@ int main(int argc, char *argv[]) {
       colorPair = 3;
     }
     if (showHideLyrics == 0 && showOnlineRadio == 0) {
-      drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
+      drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist, false);
     }
     else if (showOnlineRadio == 1) {
-      drawStatus(currentTrack, rows, cols, playlist2, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
+      drawStatus(currentTrack, rows, cols, playlist2, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist, true);
+      std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
     else {
       drawLyrics(rows, cols, playlist, currentTrack);
@@ -213,7 +223,10 @@ int main(int argc, char *argv[]) {
             libvlc_media_player_stop(player);
             libvlc_media_player_release(player);
           }
-          libvlc_media_t *media = libvlc_media_new_location(vlc, parsedM3u[highlight].c_str());
+          media = libvlc_media_new_location(vlc, parsedM3u[highlight].c_str());
+          // Attach event listener for metadata changes
+          libvlc_event_manager_t *eventManager = libvlc_media_event_manager(media);
+          libvlc_event_attach(eventManager, libvlc_MediaMetaChanged, handle_event, media);
           player = libvlc_media_player_new_from_media(media);
           libvlc_media_release(media);
           libvlc_media_player_play(player);
@@ -337,16 +350,36 @@ int main(int argc, char *argv[]) {
           }
         }
       }
+      else {
+        libvlc_media_parse_with_options(media, libvlc_media_parse_network, 0);
+      }
     }
   }
   if (player) {
     libvlc_media_player_stop(player);
     libvlc_media_player_release(player);
   }
+  libvlc_media_release(media);
   libvlc_release(vlc);
   // Cleanup ncurses
   endwin();
   return EXIT_SUCCESS;
+}
+
+// Event callback for metadata changes
+static void handle_event(const libvlc_event_t* event, void* user_data) {
+  if (event->type == libvlc_MediaMetaChanged) {
+    libvlc_media_t *media2 = static_cast<libvlc_media_t*>(user_data);
+    const char* title = libvlc_media_get_meta(media2, libvlc_meta_Title);
+    if (title) {
+      vlcTitle = title;
+    }
+  }
+}
+
+// Signal handler for Ctrl+C
+void signal_handler(int) {
+  running = false;
 }
 
 // Trim whitespace
@@ -433,8 +466,14 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrac
 }
 
 // Draw function tracks and status lines
-void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist) {
-  std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
+void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist, bool showVlcTitle) {
+  std::string trackName;
+  if (!showVlcTitle) {
+    trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
+  }
+  else {
+    trackName = vlcTitle;
+  }
   if (static_cast<int>(trackName.size()) > cols - 20) {
     trackName = trackName.substr(0, cols - 23) + "...";
   }
