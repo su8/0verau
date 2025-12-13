@@ -130,7 +130,11 @@ int main(int argc, char *argv[]) {
   float volume = 100.f;
   std::string searchQuery;
   int currentTrack = -1;
-  libvlc_instance_t *vlc = libvlc_new(0, nullptr);
+  const char* vlc_args[] = {
+    "--no-xlib", // Avoid X11 dependency for headless
+    "--quiet"
+  };
+  libvlc_instance_t *vlc = libvlc_new(sizeof(vlc_args) / sizeof(vlc_args[0]), vlc_args);
   libvlc_media_player_t *player = nullptr;
   bool vlcPlaying = false; // vlc related variable
   std::vector<Track> playlist2;
@@ -175,6 +179,7 @@ int main(int argc, char *argv[]) {
       float total = music.getDuration().asSeconds();
       drawProgressBarWithTime(elapsed, total, cols - 20, rows - 2, 0);
     }
+
     wrefresh(stdscr);
     choice = getch();
     if (choice == keys["UP"]) {
