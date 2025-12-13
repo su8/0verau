@@ -61,7 +61,7 @@ struct LyricLine {
 // Draw the lyrics for given song
 void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrack);
 // Draw function tracks and status lines
-void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist, bool showVlcTitle);
+void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist);
 // Filter playlist by search term
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term);
 // List audio files in directory
@@ -93,12 +93,13 @@ std::vector<std::string> listM3u(const std::string &path);
 static void handle_event(const libvlc_event_t* event, void* user_data);
 // Signal handler for Ctrl+C
 void signal_handler(int);
-
 // Load key bindings from config file
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath);
+
 sf::Music music;
 int currentLine = 0;
 std::string songMeta = "";
+bool vlcPlaying = false;
 std::atomic<bool> running(true);
 libvlc_media_t *media = nullptr;
 
@@ -145,7 +146,6 @@ int main(int argc, char *argv[]) {
   };
   libvlc_instance_t *vlc = libvlc_new(sizeof(vlc_args) / sizeof(vlc_args[0]), vlc_args);
   libvlc_media_player_t *player = nullptr;
-  bool vlcPlaying = false; // vlc related variable
   std::vector<Track> playlist2;
   std::vector<std::string> parsedM3u;
   if (argc > 2) {
@@ -172,10 +172,10 @@ int main(int argc, char *argv[]) {
       colorPair = 3;
     }
     if (showHideLyrics == 0 && showOnlineRadio == 0) {
-      drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist, false);
+      drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
     }
     else if (showOnlineRadio == 1) {
-      drawStatus(currentTrack, rows, cols, playlist2, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist, true);
+      drawStatus(currentTrack, rows, cols, playlist2, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
     else {
@@ -474,12 +474,9 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrac
 }
 
 // Draw function tracks and status lines
-void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist, bool showVlcTitle) {
-  std::string trackName;
-  if (!showVlcTitle) {
-    trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
-  }
-  else {
+void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist) {
+  std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
+  if (vlcPlaying) {
     trackName = songMeta;
   }
   if (static_cast<int>(trackName.size()) > cols - 20) {
