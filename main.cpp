@@ -359,7 +359,6 @@ int main(int argc, char *argv[]) {
     libvlc_media_player_stop(player);
     libvlc_media_player_release(player);
   }
-  libvlc_media_release(media);
   libvlc_release(vlc);
   // Cleanup ncurses
   endwin();
@@ -370,7 +369,7 @@ int main(int argc, char *argv[]) {
 static void handle_event(const libvlc_event_t* event, void* user_data) {
   if (event->type == libvlc_MediaMetaChanged) {
     libvlc_media_t *media2 = static_cast<libvlc_media_t*>(user_data);
-    const char* title = libvlc_media_get_meta(media2, libvlc_meta_Title);
+    const char *title = libvlc_media_get_meta(media2, libvlc_meta_Title);
     if (title) {
       vlcTitle = title;
     }
