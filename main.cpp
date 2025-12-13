@@ -225,6 +225,7 @@ int main(int argc, char *argv[]) {
           music.play();
         }
         currentTrack = highlight;
+        vlcPlaying = false;
       }
       else {
         if (!playlist2.empty()) {
