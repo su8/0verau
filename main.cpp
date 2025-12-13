@@ -59,9 +59,9 @@ struct LyricLine {
 };
 
 // Draw the lyrics for given song
-void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrack);
+void drawLyrics(int rows, int cols, std::vector<Track> playlist);
 // Draw function tracks and status lines
-void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist);
+void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist);
 // Filter playlist by search term
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term);
 // List audio files in directory
@@ -98,6 +98,8 @@ std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPa
 
 sf::Music music;
 int currentLine = 0;
+int currentTrack = -1;
+std::vector<Track> playlist2;
 std::string songMeta = "";
 bool vlcPlaying = false;
 std::atomic<bool> running(true);
@@ -139,14 +141,12 @@ int main(int argc, char *argv[]) {
   int showOnlineRadio = 0;
   float volume = 100.f;
   std::string searchQuery;
-  int currentTrack = -1;
   const char *vlc_args[] = {
     "--no-xlib", // Avoid X11 dependency for headless
     "--quiet"
   };
   libvlc_instance_t *vlc = libvlc_new(sizeof(vlc_args) / sizeof(vlc_args[0]), vlc_args);
   libvlc_media_player_t *player = nullptr;
-  std::vector<Track> playlist2;
   std::vector<std::string> parsedM3u;
   if (argc > 2) {
     playlist2 = listM3uFiles(argv[2]);
@@ -172,14 +172,14 @@ int main(int argc, char *argv[]) {
       colorPair = 3;
     }
     if (showHideLyrics == 0 && showOnlineRadio == 0) {
-      drawStatus(currentTrack, rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
+      drawStatus(rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
     }
     else if (showOnlineRadio == 1) {
-      drawStatus(currentTrack, rows, cols, playlist2, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
+      drawStatus(rows, cols, playlist2, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
     else {
-      drawLyrics(rows, cols, playlist, currentTrack);
+      drawLyrics(rows, cols, playlist);
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
 
@@ -289,7 +289,7 @@ int main(int argc, char *argv[]) {
         music.pause();
       }
       if (!playlist2.empty()) {
-        highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
+        highlight = (highlight + playlist2.size()) % playlist2.size();
       }
     }
     else if (choice == keys["SEARCH"]) {
@@ -382,6 +382,7 @@ static void handle_event(const libvlc_event_t *event, void *user_data) {
     const char *title4 = libvlc_media_get_meta(media2, libvlc_meta_NowPlaying);
     if (title4) {
       songMeta = title4;
+      playlist2[currentTrack].title = title4;
     }
   }
 }
@@ -417,7 +418,7 @@ std::vector<std::string> parseM3U(const std::vector<std::string> &filename) {
 }
 
 // Function to draw the lyrics
-void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrack) {
+void drawLyrics(int rows, int cols, std::vector<Track> playlist) {
   if (music.getStatus() != sf::Music::Playing) {
     return;
   }
@@ -475,7 +476,7 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist, int currentTrac
 }
 
 // Draw function tracks and status lines
-void drawStatus(int currentTrack, int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist) {
+void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist) {
   std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
   if (vlcPlaying) {
     trackName = songMeta;
