@@ -268,6 +268,50 @@ int main(int argc, char *argv[]) {
         }
       }
     }
+    else if (choice == keys["NEXT_SONG"] || choice == keys["PREVIOUS_SONG"]) {
+      if (player) {
+        libvlc_media_player_stop(player);
+        libvlc_media_player_release(player);
+      }
+      if (showOnlineRadio == 0) {
+        if (choice == keys["PREVIOUS_SONG"]) {
+          highlight = (highlight + 1) % playlist.size();
+        }
+        else {
+          highlight = (highlight - 1 + playlist.size()) % playlist.size();
+        }
+        if (!music.openFromFile(playlist[highlight].path)) {
+          mvprintw(rows - 1, 0, "Error: Cannot play file.");
+        } else {
+          music.setVolume(volume);
+          music.play();
+        }
+        currentTrack = highlight;
+        vlcPlaying = false;
+      }
+      else {
+        if (!playlist2.empty()) {
+          if (choice == keys["PREVIOUS_SONG"]) {
+            highlight = (highlight + 1) % playlist2.size();
+          }
+          else {
+            highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
+          }
+          media = libvlc_media_new_location(vlc, parsedM3u[highlight].c_str());
+          // Attach event listener for metadata changes
+          libvlc_event_manager_t *eventManager = libvlc_media_event_manager(media);
+          libvlc_event_attach(eventManager, libvlc_MediaMetaChanged, handle_event, media);
+          player = libvlc_media_player_new_from_media(media);
+          libvlc_media_release(media);
+          libvlc_media_player_play(player);
+          vlcPlaying = true;
+          currentTrack = highlight;
+          if (music.getStatus() == sf::Music::Playing) {
+            music.pause();
+          }
+        }
+      }
+    }
     else if (choice == keys["SHUFFLE"]) {
       shuffle = !shuffle;
     }
@@ -477,6 +521,9 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist) {
 
 // Draw function tracks and status lines
 void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist) {
+  if (playlist.empty()) {
+    return;
+  }
   std::string trackName = (currentTrack >= 0) ? playlist[currentTrack].title : "No track selected";
   if (vlcPlaying) {
     trackName = songMeta;
@@ -785,7 +832,7 @@ int keyFromString(const std::string &val) {
 // Load key bindings from config file
 std::unordered_map<std::string, int> loadKeyBindings(const std::string &configPath) {
   std::unordered_map<std::string, int> keys = {
-    {"UP", 'i'}, {"DOWN", 'j'}, {"PLAY", 'o'}, {"SEEKLEFT", ','}, {"SEEKRIGHT", '.'},
+    {"UP", 'i'}, {"DOWN", 'j'}, {"PLAY", 'o'}, {"SEEKLEFT", ','}, {"SEEKRIGHT", '.'}, {"NEXT_SONG", '&'}, {"PREVIOUS_SONG", '*'},
     {"PAUSE", 'p'}, {"QUIT", 'q'}, {"REPEAT", '@'}, {"SHOW_HIDE_ALBUM", '$'}, {"SHOW_HIDE_ONLINE_RADIO", '^'},
     {"SHUFFLE", '!'}, {"SEARCH", '/'}, {"VOLUMEUP", '+'}, {"VOLUMEDOWN", '-'}, {"SHOW_HIDE_ARTIST", '#'}, {"SHOW_HIDE_LYRICS", '%'},
   };
