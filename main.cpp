@@ -212,12 +212,18 @@ int main(int argc, char *argv[]) {
         }
       }
     }
-    else if (choice == keys["PLAY"]) {
+    else if (choice == keys["PLAY"] || choice == keys["NEXT_SONG"] || choice == keys["PREVIOUS_SONG"]) {
       if (player) {
         libvlc_media_player_stop(player);
         libvlc_media_player_release(player);
       }
       if (showOnlineRadio == 0) {
+        if (choice == keys["PREVIOUS_SONG"]) {
+          highlight = (highlight + 1) % playlist.size();
+        }
+        else if (choice == keys["NEXT_SONG"]) {
+          highlight = (highlight - 1 + playlist.size()) % playlist.size();
+        }
         if (!music.openFromFile(playlist[highlight].path)) {
           mvprintw(rows - 1, 0, "Error: Cannot play file.");
         } else {
@@ -229,6 +235,12 @@ int main(int argc, char *argv[]) {
       }
       else {
         if (!playlist2.empty()) {
+          if (choice == keys["PREVIOUS_SONG"]) {
+            highlight = (highlight + 1) % playlist2.size();
+          }
+          else if (choice == keys["NEXT_SONG"]) {
+            highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
+          }
           media = libvlc_media_new_location(vlc, parsedM3u[highlight].c_str());
           // Attach event listener for metadata changes
           libvlc_event_manager_t *eventManager = libvlc_media_event_manager(media);
@@ -265,50 +277,6 @@ int main(int argc, char *argv[]) {
       else {
         if (player) {
           libvlc_audio_set_volume(player, volume);
-        }
-      }
-    }
-    else if (choice == keys["NEXT_SONG"] || choice == keys["PREVIOUS_SONG"]) {
-      if (player) {
-        libvlc_media_player_stop(player);
-        libvlc_media_player_release(player);
-      }
-      if (showOnlineRadio == 0) {
-        if (choice == keys["PREVIOUS_SONG"]) {
-          highlight = (highlight + 1) % playlist.size();
-        }
-        else {
-          highlight = (highlight - 1 + playlist.size()) % playlist.size();
-        }
-        if (!music.openFromFile(playlist[highlight].path)) {
-          mvprintw(rows - 1, 0, "Error: Cannot play file.");
-        } else {
-          music.setVolume(volume);
-          music.play();
-        }
-        currentTrack = highlight;
-        vlcPlaying = false;
-      }
-      else {
-        if (!playlist2.empty()) {
-          if (choice == keys["PREVIOUS_SONG"]) {
-            highlight = (highlight + 1) % playlist2.size();
-          }
-          else {
-            highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
-          }
-          media = libvlc_media_new_location(vlc, parsedM3u[highlight].c_str());
-          // Attach event listener for metadata changes
-          libvlc_event_manager_t *eventManager = libvlc_media_event_manager(media);
-          libvlc_event_attach(eventManager, libvlc_MediaMetaChanged, handle_event, media);
-          player = libvlc_media_player_new_from_media(media);
-          libvlc_media_release(media);
-          libvlc_media_player_play(player);
-          vlcPlaying = true;
-          currentTrack = highlight;
-          if (music.getStatus() == sf::Music::Playing) {
-            music.pause();
-          }
         }
       }
     }
