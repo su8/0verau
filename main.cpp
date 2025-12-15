@@ -102,6 +102,7 @@ int currentTrack = -1;
 std::vector<Track> playlist2;
 std::string songMeta = "";
 bool vlcPlaying = false;
+bool playingMp3 = false;
 std::atomic<bool> running(true);
 libvlc_media_t *media = nullptr;
 std::string trackName = "No track selected";
@@ -233,6 +234,7 @@ int main(int argc, char *argv[]) {
         }
         currentTrack = highlight;
         vlcPlaying = false;
+        playingMp3 = true;
       }
       else {
         if (!playlist2.empty()) {
@@ -250,6 +252,7 @@ int main(int argc, char *argv[]) {
           libvlc_media_release(media);
           libvlc_media_player_play(player);
           vlcPlaying = true;
+          playingMp3 = false;
           currentTrack = highlight;
           if (music.getStatus() == sf::Music::Playing) {
             music.pause();
@@ -369,9 +372,12 @@ int main(int argc, char *argv[]) {
             currentTrack = highlight;
           }
         }
+        playingMp3 = true;
       }
       else {
-        libvlc_media_parse_with_options(media, libvlc_media_parse_network, 0);
+        if (!playingMp3) {
+          libvlc_media_parse_with_options(media, libvlc_media_parse_network, 0);
+        }
       }
     }
   }
