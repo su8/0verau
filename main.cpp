@@ -353,7 +353,7 @@ int main(int argc, char *argv[]) {
     }
     // Auto-play next track
     if (music.getStatus() == sf::Music::Stopped && currentTrack != -1) {
-      if (showOnlineRadio == 0) {
+      if (showOnlineRadio == 0 && !vlcPlaying) {
         if (repeat) {
           music.play();
         } else {
@@ -373,10 +373,12 @@ int main(int argc, char *argv[]) {
           }
         }
         playingMp3 = true;
+        vlcPlaying = false;
       }
       else {
         if (!playingMp3) {
           libvlc_media_parse_with_options(media, libvlc_media_parse_network, 0);
+          vlcPlaying = true;
         }
       }
     }
