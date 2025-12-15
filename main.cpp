@@ -302,7 +302,7 @@ int main(int argc, char *argv[]) {
         music.pause();
       }
       if (!playlist2.empty()) {
-        highlight = (playlist2.size()) % playlist2.size();
+        highlight = (highlight + playlist2.size()) % playlist2.size();
       }
     }
     else if (choice == keys["SEARCH"]) {
@@ -512,9 +512,6 @@ void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, 
   mvprintw(1, 0, "%c %c Navigate | %c Play | %c Pause | SEEK %c left %c right | %c %c Volume UP/DOWN | %c Search | %c Shuffle | %c Repeat | %c Quit", keys["UP"], keys["DOWN"], keys["PLAY"], keys["PAUSE"], keys["SEEKLEFT"], keys["SEEKRIGHT"], keys["VOLUMEUP"], keys["VOLUMEDOWN"], keys["SEARCH"], keys["SHUFFLE"], keys["REPEAT"], keys["QUIT"]);
 
   // Show playlist (scrollable)
-  if (highlight > playlist.size()) {
-    highlight = 0;
-  }
   int visibleRows = rows - 6;
   if (highlight < offset) offset = highlight;
   if (highlight >= offset + visibleRows) offset = highlight - visibleRows + 1;
