@@ -221,7 +221,7 @@ int main(int argc, char *argv[]) {
       }
       if (showOnlineRadio == 0) {
         if (choice == keys["PREVIOUS_SONG"]) {
-          highlight = (highlight - 1) % playlist.size();
+          highlight = (highlight - 1 + playlist.size()) % playlist.size();
         }
         else if (choice == keys["NEXT_SONG"]) {
           highlight = (highlight + 1 + playlist.size()) % playlist.size();
@@ -239,7 +239,7 @@ int main(int argc, char *argv[]) {
       else {
         if (!playlist2.empty()) {
           if (choice == keys["PREVIOUS_SONG"]) {
-            highlight = (highlight - 1) % playlist2.size();
+            highlight = (highlight - 1 + playlist.size()) % playlist2.size();
           }
           else if (choice == keys["NEXT_SONG"]) {
             highlight = (highlight + 1 + playlist2.size()) % playlist2.size();
@@ -362,7 +362,7 @@ int main(int argc, char *argv[]) {
             std::uniform_int_distribution<int> dist(0, playlist.size() - 1);
             highlight = dist(rng);
           } else {
-            highlight = (highlight + 1) % playlist.size();
+            highlight = (highlight + 1 + playlist.size()) % playlist.size();
           }
           if (!music.openFromFile(playlist[highlight].path)) {
             mvprintw(rows - 1, 0, "Error: Cannot play file.");
@@ -376,7 +376,7 @@ int main(int argc, char *argv[]) {
         vlcPlaying = false;
       }
       else {
-        if (!playingMp3) {
+        if (!playingMp3 && player && vlcPlaying) {
           libvlc_media_parse_with_options(media, libvlc_media_parse_network, 0);
           vlcPlaying = true;
         }
