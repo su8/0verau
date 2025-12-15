@@ -219,10 +219,10 @@ int main(int argc, char *argv[]) {
       }
       if (showOnlineRadio == 0) {
         if (choice == keys["PREVIOUS_SONG"]) {
-          highlight = (highlight + 1) % playlist.size();
+          highlight = (highlight - 1) % playlist.size();
         }
         else if (choice == keys["NEXT_SONG"]) {
-          highlight = (highlight - 1 + playlist.size()) % playlist.size();
+          highlight = (highlight + 1 + playlist.size()) % playlist.size();
         }
         if (!music.openFromFile(playlist[highlight].path)) {
           mvprintw(rows - 1, 0, "Error: Cannot play file.");
@@ -236,10 +236,10 @@ int main(int argc, char *argv[]) {
       else {
         if (!playlist2.empty()) {
           if (choice == keys["PREVIOUS_SONG"]) {
-            highlight = (highlight + 1) % playlist2.size();
+            highlight = (highlight - 1) % playlist2.size();
           }
           else if (choice == keys["NEXT_SONG"]) {
-            highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
+            highlight = (highlight + 1 + playlist2.size()) % playlist2.size();
           }
           media = libvlc_media_new_location(vlc, parsedM3u[highlight].c_str());
           // Attach event listener for metadata changes
@@ -391,10 +391,11 @@ static void handle_event(const libvlc_event_t *event, void *user_data) {
     //const char *title = libvlc_media_get_meta(media2, libvlc_meta_Title);
     //const char *title2 = libvlc_media_get_meta(media2, libvlc_meta_Artist);
     //const char *title3 = libvlc_media_get_meta(media2, libvlc_meta_Album);
-    const char *title4 = libvlc_media_get_meta(media2, libvlc_meta_NowPlaying);
+    char *title4 = libvlc_media_get_meta(media2, libvlc_meta_NowPlaying);
     if (title4) {
       songMeta = title4;
       playlist2[currentTrack].title = title4;
+      libvlc_free(title4);
     }
   }
 }
