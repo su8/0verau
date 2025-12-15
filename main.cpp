@@ -104,6 +104,7 @@ std::string songMeta = "";
 bool vlcPlaying = false;
 std::atomic<bool> running(true);
 libvlc_media_t *media = nullptr;
+std::string trackName = "No track selected";
 
 using json = nlohmann::json;
 
@@ -493,7 +494,6 @@ void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, 
   if (playlist.empty()) {
     return;
   }
-  std::string trackName = "No track selected";
   if (currentTrack >= 0 && (currentTrack <= playlist.size())) {
     trackName = playlist[currentTrack].title;
   }
