@@ -239,7 +239,7 @@ int main(int argc, char *argv[]) {
       else {
         if (!playlist2.empty()) {
           if (choice == keys["PREVIOUS_SONG"]) {
-            highlight = (highlight - 1 + playlist.size()) % playlist2.size();
+            highlight = (highlight - 1 + playlist2.size()) % playlist2.size();
           }
           else if (choice == keys["NEXT_SONG"]) {
             highlight = (highlight + 1 + playlist2.size()) % playlist2.size();
