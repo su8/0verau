@@ -546,7 +546,7 @@ void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, 
 
 // Filter playlist by search term
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term) {
-  if (term.empty()) return tracks;
+  if (term.empty() || (term.length() >= 2 && term[1] == '/')) return tracks;
   std::vector<Track> filtered;
   for (auto &t : tracks) {
     std::string lowerName = t.title;
