@@ -61,7 +61,7 @@ struct LyricLine {
 // Draw the lyrics for given song
 void drawLyrics(int rows, int cols, std::vector<Track> playlist);
 // Draw function tracks and status lines
-void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist);
+void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist, std::vector<Track> customPlaylist);
 // Filter playlist by search term
 std::vector<Track> filterTracks(const std::vector<Track> &tracks, const std::string &term);
 // List audio files in directory
@@ -174,10 +174,10 @@ int main(int argc, char *argv[]) {
       colorPair = 3;
     }
     if (showHideLyrics == 0 && showOnlineRadio == 0) {
-      drawStatus(rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
+      drawStatus(rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist, listAudioFiles(musicDir));
     }
     else if (showOnlineRadio == 1) {
-      drawStatus(rows, cols, playlist2, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist);
+      drawStatus(rows, cols, playlist2, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist, listM3uFiles(argv[2]));
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
     else {
@@ -498,12 +498,20 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist) {
 }
 
 // Draw function tracks and status lines
-void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist) {
+void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist, std::vector<Track> customPlaylist) {
+  unsigned int x = 0U;
   if (playlist.empty()) {
     return;
   }
-  if (currentTrack >= 0 && (currentTrack <= playlist.size())) {
-    trackName = playlist[currentTrack].title;
+  if (currentTrack >= 0 && (currentTrack <= customPlaylist.size()) && !vlcPlaying) {
+    for (auto &z : customPlaylist) {
+      if (z.title == playlist[currentTrack].title) {
+        trackName = playlist[currentTrack].title;
+        break;
+      }
+      x++;
+    }
+    currentTrack = x;
   }
   if (vlcPlaying) {
     trackName = songMeta;
