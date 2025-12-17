@@ -100,6 +100,8 @@ sf::Music music;
 int currentLine = 0;
 int currentTrack = -1;
 std::vector<Track> playlist2;
+std::vector<Track> mp3Playlist;
+std::vector<Track> m3uPlaylist;
 std::string songMeta = "";
 bool vlcPlaying = false;
 bool playingMp3 = false;
@@ -116,6 +118,7 @@ int main(int argc, char *argv[]) {
   auto playlist = listAudioFiles(musicDir);
   if (playlist.empty()) { std::cerr << "No audio files found in " << musicDir << "\n"; return EXIT_FAILURE; }
 
+  mp3Playlist = playlist;
   // Load key bindings from config file
   auto keys = loadKeyBindings((getenv("HOME") ? static_cast<std::string>(getenv("HOME")) : static_cast<std::string>(".")) + static_cast<std::string>("/0verau.conf"));
 
@@ -153,6 +156,7 @@ int main(int argc, char *argv[]) {
   if (argc > 2) {
     playlist2 = listM3uFiles(argv[2]);
     parsedM3u = parseM3U(listM3u(argv[2]));
+    m3uPlaylist = playlist2;
   }
 
   while (running) {
@@ -174,10 +178,10 @@ int main(int argc, char *argv[]) {
       colorPair = 3;
     }
     if (showHideLyrics == 0 && showOnlineRadio == 0) {
-      drawStatus(rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist, listAudioFiles(musicDir));
+      drawStatus(rows, cols, playlist, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist, mp3Playlist);
     }
     else if (showOnlineRadio == 1) {
-      drawStatus(rows, cols, playlist2, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist, listM3uFiles(argv[2]));
+      drawStatus(rows, cols, playlist2, highlight, colorPair, status, offset, shuffle, repeat, volume, searchQuery, keys, showHideAlbum, showHideArtist, m3uPlaylist);
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
     else {
