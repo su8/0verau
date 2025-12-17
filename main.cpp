@@ -503,14 +503,14 @@ void drawLyrics(int rows, int cols, std::vector<Track> playlist) {
 
 // Draw function tracks and status lines
 void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, int colorPair, std::string status, int offset, bool shuffle, bool repeat, float volume, std::string &searchQuery, std::unordered_map<std::string, int> keys, int showHideAlbum, int showHideArtist, std::vector<Track> customPlaylist) {
-  unsigned int x = 0U;
   if (playlist.empty()) {
     return;
   }
   if (currentTrack >= 0 && (currentTrack <= customPlaylist.size()) && !vlcPlaying) {
+    unsigned int x = 0U;
     for (auto &z : customPlaylist) {
-      if (z.title == playlist[currentTrack].title) {
-        trackName = playlist[currentTrack].title;
+      if (z.title == customPlaylist[currentTrack].title) {
+        trackName = z.title;
         break;
       }
       x++;
