@@ -508,9 +508,9 @@ void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, 
   }
   if (currentTrack >= 0 && (currentTrack <= customPlaylist.size()) && !vlcPlaying) {
     unsigned int x = 0U;
-    for (unsigned int z = 0U; z <= customPlaylist.size(); z++) {
-      if (customPlaylist[z].title == playlist[currentTrack].title) {
-        trackName = customPlaylist[z].title;
+    for (auto &z : customPlaylist) {
+      if (z.title == playlist[currentTrack].title) {
+        trackName = z.title;
         break;
       }
       x++;
