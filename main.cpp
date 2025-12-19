@@ -313,9 +313,6 @@ int main(int argc, char *argv[]) {
       if (!playlist2.empty()) {
         highlight = (highlight + playlist2.size()) % playlist2.size();
       }
-      if (showOnlineRadio == 0) {
-        trackName = mp3Name;
-      }
     }
     else if (choice == keys["SEARCH"]) {
       echo();
