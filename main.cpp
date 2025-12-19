@@ -108,6 +108,7 @@ bool playingMp3 = false;
 std::atomic<bool> running(true);
 libvlc_media_t *media = nullptr;
 std::string trackName = "No track selected";
+std::string mp3Name = "";
 
 using json = nlohmann::json;
 
@@ -239,6 +240,7 @@ int main(int argc, char *argv[]) {
         currentTrack = highlight;
         vlcPlaying = false;
         playingMp3 = true;
+        mp3Name = playlist[currentTrack].title;
       }
       else {
         if (!playlist2.empty()) {
@@ -311,6 +313,9 @@ int main(int argc, char *argv[]) {
       if (!playlist2.empty()) {
         highlight = (highlight + playlist2.size()) % playlist2.size();
       }
+      if (showOnlineRadio == 0) {
+        trackName = mp3Name;
+      }
     }
     else if (choice == keys["SEARCH"]) {
       echo();
@@ -376,6 +381,7 @@ int main(int argc, char *argv[]) {
             currentTrack = highlight;
           }
         }
+        mp3Name = playlist[currentTrack].title;
         playingMp3 = true;
         vlcPlaying = false;
       }
@@ -516,6 +522,9 @@ void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, 
       x++;
     }
     currentTrack = x;
+  }
+  if (!mp3Name.empty() && !vlcPlaying) {
+    trackName = mp3Name;
   }
   if (vlcPlaying) {
     trackName = songMeta;
