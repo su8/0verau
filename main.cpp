@@ -21,7 +21,6 @@
 #include <algorithm>
 #include <random>
 #include <iostream>
-#include <iomanip>
 #include <fstream>
 #include <cstdlib>
 #include <cstdio>
@@ -102,7 +101,7 @@ int currentTrack = -1;
 std::vector<Track> playlist2;
 std::vector<Track> mp3Playlist;
 std::vector<Track> m3uPlaylist;
-std::string songMeta = "";
+std::string vlcSongMeta = "";
 bool vlcPlaying = false;
 bool playingMp3 = false;
 std::atomic<bool> running(true);
@@ -409,7 +408,7 @@ static void handle_event(const libvlc_event_t *event, void *user_data) {
     //const char *title3 = libvlc_media_get_meta(media2, libvlc_meta_Album);
     char *title4 = libvlc_media_get_meta(media2, libvlc_meta_NowPlaying);
     if (title4) {
-      songMeta = title4;
+      vlcSongMeta = title4;
       playlist2[currentTrack].title = title4;
       libvlc_free(title4);
     }
@@ -524,7 +523,7 @@ void drawStatus(int rows, int cols, std::vector<Track> playlist, int highlight, 
     trackName = mp3Name;
   }
   if (vlcPlaying) {
-    trackName = songMeta;
+    trackName = vlcSongMeta;
   }
   if (static_cast<int>(trackName.size()) > cols - 20) {
     trackName = trackName.substr(0, cols - 23) + "...";
