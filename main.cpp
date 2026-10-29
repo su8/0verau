@@ -878,7 +878,15 @@ void sortTracks(std::vector<Track> &tracks, int mode) {
       default: return t.path;
     }
   };
-  std::stable_sort(tracks.begin(), tracks.end(), [&field](const Track &a, const Track &b) { return lower(field(a)) < lower(field(b)); });
+  // Every key is made lower case once, not at every comparison
+  std::vector<std::pair<std::string, size_t>> keys;
+  keys.reserve(tracks.size());
+  for (size_t i = 0; i < tracks.size(); i++) { keys.emplace_back(lower(field(tracks[i])), i); }
+  std::stable_sort(keys.begin(), keys.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+  std::vector<Track> sorted;
+  sorted.reserve(tracks.size());
+  for (const auto &key : keys) { sorted.push_back(std::move(tracks[key.second])); }
+  tracks = std::move(sorted);
 }
 
 // Albums are grouped by name without regard to case; songs without an album are "Unknown Album"
