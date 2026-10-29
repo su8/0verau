@@ -25,7 +25,7 @@ sudo/doas make install
 
 ### Listening to online radio
 
-To start the program you must supply 2 arguments, `0verau mp3/folder 'm3u/folder'` , so you can choose between playing online stream/or local \*.mp3 files, for radio streams the most popular is https://www.internet-radio.com/stations/house/ , download the \*.m3u file and supply it as argument so you should use it like this `0verau mp3/folder m3u/folder` , to start playing the online stream you should press `SHIFT + ^` and it will list the `m3u` radio stations.
+Start the program with your music folder: `0verau mp3/folder`. For online radio add a second argument, a folder with \*.m3u files: `0verau mp3/folder m3u/folder`. The most popular radio streams are at https://www.internet-radio.com/stations/house/ , download the \*.m3u file into that folder. To start playing the online stream press `SHIFT + ^` and it will list the `m3u` radio stations.
 
 # Requirements
 
@@ -59,16 +59,29 @@ SHOW_HIDE_LYRICS=%
 SHOW_HIDE_ONLINE_RADIO=^
 NEXT_SONG=&
 PREVIOUS_SONG=*
-FAVOURITE=f       # (remove me) pressing f again removes the song entry
+# pressing FAVOURITE again removes the song entry
+FAVOURITE=f
 SHOW_HIDE_FAVOURITES=F
 GOTO=:
 QUEUE=a
 SORT=s
 EXPORT_FAVOURITES=E
-QUIT=q
-SHOW_HIDE_SIDEBAR=g  # to swtich between sidebar/main menu press TAB
+SHOW_HIDE_SIDEBAR=g
+# switch between the album list and the songs
+SWITCH_FOCUS=TAB
 SHOW_HIDE_ART=c
 ```
+
+A comment must be on its own line: `#` is a key too. `ENTER`, `SPACE` and `TAB` name those keys.
+
+# Saved files
+
+- `~/.config/0verau/state.conf`: volume, shuffle, repeat, sort order, the selected album and the last song. Saved when you change them and when you quit.
+- `~/.config/0verau/favourites.txt`: your favourite songs and stations.
+- `~/.cache/0verau/`: the song list of each music folder, so the next start doesn't read every file again.
+- `song.mp3.lrc` next to a song: its downloaded lyrics.
+
+`$XDG_CONFIG_HOME` and `$XDG_CACHE_HOME` are used when they are set.
 
 ---
 
