@@ -139,6 +139,7 @@ const Action ACTIONS[] = {
   {"SHOW_HIDE_FAVOURITES", 'F', "Show only the favourites"},
   {"GOTO", ':', "Go to a song by its number"},
   {"QUEUE", 'a', "Add the selected song to the queue"},
+  {"RESCAN", 'R', "Look for new, changed and removed songs"},
   {"SORT", 's', "Sort by path, title, artist or album"},
   {"EXPORT_FAVOURITES", 'E', "Save the favourites as .m3u files in your home folder"},
   {"QUIT", 'q', "Quit"},
@@ -211,6 +212,7 @@ std::atomic<bool> running(true);
 std::mutex libraryMutex;
 std::vector<Track> library;
 std::atomic<bool> scanDone(false);
+std::atomic<bool> rescanRequested(false); // the rescan key was pressed
 std::atomic<bool> libraryPreloaded(false); // the list came from the saved library and is being checked
 std::atomic<unsigned int> libraryVersion(0);
 // Title of the radio stream, it is set from a libvlc thread
@@ -815,52 +817,63 @@ Track readMetadata(const std::filesystem::path &filePath) {
 
 // Runs in its own thread: find the songs in the folder and in its subfolders. A song that is in the
 // saved library with the same size and time is not read again. When the scan is done the library
-// is saved, so the next start shows the songs at once
+// is saved, so the next start shows the songs at once. Then it waits for the rescan key
 void scanLibrary(const std::string &root, const std::string &cacheFile, std::unordered_map<std::string, Track> cached, bool live) {
   namespace fs = std::filesystem;
-  std::error_code ec;
-  std::vector<Track> fresh;
-  fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
-  const fs::recursive_directory_iterator end;
-  while (!ec && it != end && running) {
-    std::error_code fileEc;
-    if (it->is_regular_file(fileEc)) {
-      std::string ext = lower(it->path().extension().string());
-      if (ext == ".wav" || ext == ".ogg" || ext == ".flac" || ext == ".mp3") {
-        const std::string path = it->path().string();
-        std::error_code sizeEc, timeEc;
-        const long long size = static_cast<long long>(it->file_size(sizeEc));
-        const long long mtime = static_cast<long long>(it->last_write_time(timeEc).time_since_epoch().count());
-        Track track;
-        auto known = cached.find(path);
-        if (known != cached.end() && !sizeEc && !timeEc && known->second.size == size && known->second.mtime == mtime) {
-          track = known->second;
-        } else {
-          // The tags are read without holding the lock, the screen keeps working
-          track = readMetadata(it->path());
-          track.size = size;
-          track.mtime = mtime;
-        }
-        fresh.push_back(track);
-        if (live) {
-          std::lock_guard<std::mutex> lock(libraryMutex);
-          library.push_back(track);
-          libraryVersion++;
+  for (;;) {
+    std::error_code ec;
+    std::vector<Track> fresh;
+    fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
+    const fs::recursive_directory_iterator end;
+    while (!ec && it != end && running) {
+      std::error_code fileEc;
+      if (it->is_regular_file(fileEc)) {
+        std::string ext = lower(it->path().extension().string());
+        if (ext == ".wav" || ext == ".ogg" || ext == ".flac" || ext == ".mp3") {
+          const std::string path = it->path().string();
+          std::error_code sizeEc, timeEc;
+          const long long size = static_cast<long long>(it->file_size(sizeEc));
+          const long long mtime = static_cast<long long>(it->last_write_time(timeEc).time_since_epoch().count());
+          Track track;
+          auto known = cached.find(path);
+          if (known != cached.end() && !sizeEc && !timeEc && known->second.size == size && known->second.mtime == mtime) {
+            track = known->second;
+          } else {
+            // The tags are read without holding the lock, the screen keeps working
+            track = readMetadata(it->path());
+            track.size = size;
+            track.mtime = mtime;
+          }
+          fresh.push_back(track);
+          if (live) {
+            std::lock_guard<std::mutex> lock(libraryMutex);
+            library.push_back(track);
+            libraryVersion++;
+          }
         }
       }
+      it.increment(ec);
     }
-    it.increment(ec);
+    if (!running) { return; } // the player is closing: a half finished scan is not saved
+    std::sort(fresh.begin(), fresh.end(), [](const Track &a, const Track &b) { return a.path < b.path; });
+    {
+      std::lock_guard<std::mutex> lock(libraryMutex);
+      library = fresh;
+      libraryVersion++;
+    }
+    libraryPreloaded = false;
+    scanDone = true;
+    saveLibraryCache(cacheFile, root, fresh);
+    // Wait for the rescan key. The songs just found are the saved library of the next scan
+    while (running && !rescanRequested) { std::this_thread::sleep_for(std::chrono::milliseconds(100)); }
+    if (!running) { return; }
+    cached.clear();
+    for (auto &track : fresh) { cached[track.path] = std::move(track); }
+    live = false;
+    libraryPreloaded = true;
+    scanDone = false;
+    rescanRequested = false;
   }
-  if (!running) { return; } // the player is closing: a half finished scan is not saved
-  std::sort(fresh.begin(), fresh.end(), [](const Track &a, const Track &b) { return a.path < b.path; });
-  {
-    std::lock_guard<std::mutex> lock(libraryMutex);
-    library = fresh;
-    libraryVersion++;
-  }
-  libraryPreloaded = false;
-  scanDone = true;
-  saveLibraryCache(cacheFile, root, fresh);
 }
 
 // Songs whose title, artist or album contain the text; no text means all of them
@@ -2146,6 +2159,13 @@ void handleKey(App &app, int ch, int rows, int cols) {
     app.stateDirty = true;
     rebuildSongView(app);
     setMessage(app, std::string("Songs sorted by ") + SORT_NAMES[app.sortMode]);
+  } else if (action == "RESCAN") {
+    if (scanDone) {
+      rescanRequested = true;
+      setMessage(app, "Looking for new songs...");
+    } else {
+      setMessage(app, "The music folder is being scanned already.");
+    }
   } else if (action == "EXPORT_FAVOURITES") {
     exportFavourites(app);
   } else if (action == "SEARCH") {

@@ -65,6 +65,7 @@ SHOW_HIDE_FAVOURITES=F
 GOTO=:
 QUEUE=a
 SORT=s
+RESCAN=R
 EXPORT_FAVOURITES=E
 SHOW_HIDE_SIDEBAR=g
 # in the album list, Enter plays the album and the right arrow goes to its songs
