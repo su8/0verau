@@ -25,7 +25,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <cwchar>
-#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -53,6 +52,13 @@
 #include <curl/curl.h>
 #include <vlc/vlc.h>
 #include "json.hpp"
+#ifndef MPRIS
+#define MPRIS 1 // make MPRIS=0 builds without libsystemd, and without media keys
+#endif
+#if MPRIS
+#include <systemd/sd-bus.h>
+#include <unistd.h>
+#endif
 
 using json = nlohmann::json;
 
@@ -138,7 +144,10 @@ const Action ACTIONS[] = {
   {"FAVOURITE", 'f', "Add or remove the selected item from the favourites"},
   {"SHOW_HIDE_FAVOURITES", 'F', "Show only the favourites"},
   {"GOTO", ':', "Go to a song by its number"},
-  {"QUEUE", 'a', "Add the selected song to the queue"},
+  {"QUEUE", 'a', "Add the selected song to the queue, in the queue: remove it"},
+  {"SHOW_HIDE_QUEUE", 'Q', "Show/hide the queue"},
+  {"CLEAR_QUEUE", 'X', "Empty the queue"},
+  {"RESCAN", 'R', "Look for new, changed and removed songs"},
   {"SORT", 's', "Sort by path, title, artist or album"},
   {"EXPORT_FAVOURITES", 'E', "Save the favourites as .m3u files in your home folder"},
   {"QUIT", 'q', "Quit"},
@@ -184,12 +193,14 @@ struct App {
   libvlc_instance_t *vlc = nullptr;
   libvlc_media_player_t *player = nullptr;
   // Songs that play before the normal order continues
-  std::deque<Track> queue;
+  List queue;
+  bool showQueue = false;        // the queue is listed instead of the songs
   // Favourites: songs by file, stations by address
   std::set<std::string> favSongs;
   std::set<std::string> favStations;
   // Saved settings
   std::string lastSong;          // the cursor goes back to this song at the start
+  float resumeAt = 0.f;          // seconds into lastSong where it stopped, it starts there paused
   bool restoreCursor = false;
   bool stateDirty = false;
   std::chrono::steady_clock::time_point lastStateSave = std::chrono::steady_clock::now();
@@ -202,6 +213,10 @@ struct App {
   std::future<LyricsResult> lyricsFuture;
   bool lyricsLoading = false;
   unsigned int seenLibraryVersion = 0xFFFFFFFFU;
+#if MPRIS
+  sd_bus *bus = nullptr;         // the session bus, null when there is no desktop session
+  std::string mprisSeen;         // what the desktop was told last
+#endif
 };
 
 sf::Music music;
@@ -210,6 +225,7 @@ std::atomic<bool> running(true);
 std::mutex libraryMutex;
 std::vector<Track> library;
 std::atomic<bool> scanDone(false);
+std::atomic<bool> rescanRequested(false); // the rescan key was pressed
 std::atomic<bool> libraryPreloaded(false); // the list came from the saved library and is being checked
 std::atomic<unsigned int> libraryVersion(0);
 // Title of the radio stream, it is set from a libvlc thread
@@ -289,11 +305,17 @@ void togglePause(App &app);
 void changeVolume(App &app, float delta);
 void seekBy(float seconds);
 void autoAdvance(App &app);
+std::string playbackStatus(const App &app);
+// MPRIS: media keys, playerctl and the player widgets of the desktop
+void mprisStart(App &app);
+void mprisUpdate(App &app);
+void mprisStop(App &app);
 // Screen
 std::string browserLine(const App &app, const Track &track, bool radio, int index, int numberWidth);
 void drawHeader(App &app, int rows, int cols);
 int sidebarWidth(const App &app, int cols);
 void drawSidebar(App &app, int rows, int width);
+List &activeList(App &app);
 void drawBrowser(App &app, List &list, bool radio, int rows, int x, int width);
 void drawLyrics(App &app, int rows, int x0, int width);
 void drawFooter(App &app, int rows, int cols, bool listView);
@@ -363,6 +385,7 @@ int main(int argc, char *argv[]) {
     };
     app.vlc = libvlc_new(sizeof(vlcArgs) / sizeof(vlcArgs[0]), vlcArgs);
     if (!app.vlc) { setMessage(app, "Warning: libVLC could not be started, radio is not available.", 10); }
+    mprisStart(app);
     start_color();
     use_default_colors();
     init_pair(1, COLOR_GREEN, -1);  // Playing
@@ -384,6 +407,7 @@ int main(int argc, char *argv[]) {
   music.stop();
   stopRadio(app);
   if (app.vlc) { libvlc_release(app.vlc); }
+  mprisStop(app);
   scanner.join();
   if (app.lyricsLoading) { app.lyricsFuture.wait(); } // curl must be idle before its cleanup; running = false ends the download
   curl_global_cleanup();
@@ -413,6 +437,11 @@ void runUi(App &app) {
           if (app.songs.items[i].path == app.lastSong) {
             app.songs.highlight = static_cast<int>(i);
             app.restoreCursor = false;
+            const float at = app.resumeAt; // playLocal clears it
+            if (at > 0.f && playLocal(app, app.songs.items[i])) {
+              music.pause();
+              music.setPlayingOffset(sf::seconds(at));
+            }
             break;
           }
         }
@@ -439,14 +468,14 @@ void runUi(App &app) {
       drawLyrics(app, rows, lyricsX, cols - lyricsX);
       listView = false;
     } else {
-      // The albums on the left, the songs of the selected album next to them, the cover on the right
+      // The albums on the left, the songs of the selected album (or the queue) next to them, the cover on the right
       const int sidebar = sidebarWidth(app, cols);
       const int left = sidebar > 0 ? sidebar + 1 : 0;
       const int artWidth = artPanelWidth(app, cols, left);
       updateArt(app, artWidth > 0);
       const int right = artWidth > 0 ? artWidth + 1 : 0;
       if (sidebar > 0) { drawSidebar(app, rows, sidebar); }
-      drawBrowser(app, app.songs, false, rows, left, cols - left - right);
+      drawBrowser(app, app.showQueue ? app.queue : app.songs, false, rows, left, cols - left - right);
       if (artWidth > 0) {
         for (int y = 0; y < visibleRows; y++) { mvaddstr(y + 2, cols - artWidth - 1, "|"); }
         drawArtPanel(app, rows, cols - artWidth, artWidth);
@@ -458,6 +487,7 @@ void runUi(App &app) {
     int ch = getch();
     if (ch != ERR) { handleKey(app, ch, rows, cols); }
     autoAdvance(app);
+    mprisUpdate(app);
     // The settings are saved a moment after they change, not at every key press
     if (app.stateDirty && std::chrono::steady_clock::now() - app.lastStateSave > std::chrono::seconds(2)) { saveState(app); }
   }
@@ -664,6 +694,7 @@ void loadState(App &app) {
       else if (key == "show_art") { app.showArt = (val == "1"); }
       else if (key == "album") { app.albumFilter = lower(val); }
       else if (key == "last_song") { app.lastSong = raw; }
+      else if (key == "last_position") { app.resumeAt = std::max(0.f, std::stof(val)); }
     } catch (const std::exception &) {
       // a damaged value is ignored, the default stays
     }
@@ -685,6 +716,9 @@ bool saveState(App &app) {
       << "show_art=" << (app.showArt ? 1 : 0) << "\n";
   if (!app.lastSong.empty() && app.lastSong.find_first_of("\r\n") == std::string::npos) {
     out << "last_song=" << app.lastSong << "\n";
+    // Where the song is now, or where it stopped last time if nothing was played since
+    const bool playing = app.source == Source::Local && music.getStatus() != sf::Music::Status::Stopped;
+    out << "last_position=" << static_cast<int>(playing ? music.getPlayingOffset().asSeconds() : app.resumeAt) << "\n";
   }
   if (app.showSidebar && !app.albumFilter.empty() && app.albumFilter.find_first_of("\r\n") == std::string::npos) {
     out << "album=" << app.albumFilter << "\n"; // the selected album is selected again at the next start
@@ -805,52 +839,63 @@ Track readMetadata(const std::filesystem::path &filePath) {
 
 // Runs in its own thread: find the songs in the folder and in its subfolders. A song that is in the
 // saved library with the same size and time is not read again. When the scan is done the library
-// is saved, so the next start shows the songs at once
+// is saved, so the next start shows the songs at once. Then it waits for the rescan key
 void scanLibrary(const std::string &root, const std::string &cacheFile, std::unordered_map<std::string, Track> cached, bool live) {
   namespace fs = std::filesystem;
-  std::error_code ec;
-  std::vector<Track> fresh;
-  fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
-  const fs::recursive_directory_iterator end;
-  while (!ec && it != end && running) {
-    std::error_code fileEc;
-    if (it->is_regular_file(fileEc)) {
-      std::string ext = lower(it->path().extension().string());
-      if (ext == ".wav" || ext == ".ogg" || ext == ".flac" || ext == ".mp3") {
-        const std::string path = it->path().string();
-        std::error_code sizeEc, timeEc;
-        const long long size = static_cast<long long>(it->file_size(sizeEc));
-        const long long mtime = static_cast<long long>(it->last_write_time(timeEc).time_since_epoch().count());
-        Track track;
-        auto known = cached.find(path);
-        if (known != cached.end() && !sizeEc && !timeEc && known->second.size == size && known->second.mtime == mtime) {
-          track = known->second;
-        } else {
-          // The tags are read without holding the lock, the screen keeps working
-          track = readMetadata(it->path());
-          track.size = size;
-          track.mtime = mtime;
-        }
-        fresh.push_back(track);
-        if (live) {
-          std::lock_guard<std::mutex> lock(libraryMutex);
-          library.push_back(track);
-          libraryVersion++;
+  for (;;) {
+    std::error_code ec;
+    std::vector<Track> fresh;
+    fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
+    const fs::recursive_directory_iterator end;
+    while (!ec && it != end && running) {
+      std::error_code fileEc;
+      if (it->is_regular_file(fileEc)) {
+        std::string ext = lower(it->path().extension().string());
+        if (ext == ".wav" || ext == ".ogg" || ext == ".flac" || ext == ".mp3") {
+          const std::string path = it->path().string();
+          std::error_code sizeEc, timeEc;
+          const long long size = static_cast<long long>(it->file_size(sizeEc));
+          const long long mtime = static_cast<long long>(it->last_write_time(timeEc).time_since_epoch().count());
+          Track track;
+          auto known = cached.find(path);
+          if (known != cached.end() && !sizeEc && !timeEc && known->second.size == size && known->second.mtime == mtime) {
+            track = known->second;
+          } else {
+            // The tags are read without holding the lock, the screen keeps working
+            track = readMetadata(it->path());
+            track.size = size;
+            track.mtime = mtime;
+          }
+          fresh.push_back(track);
+          if (live) {
+            std::lock_guard<std::mutex> lock(libraryMutex);
+            library.push_back(track);
+            libraryVersion++;
+          }
         }
       }
+      it.increment(ec);
     }
-    it.increment(ec);
+    if (!running) { return; } // the player is closing: a half finished scan is not saved
+    std::sort(fresh.begin(), fresh.end(), [](const Track &a, const Track &b) { return a.path < b.path; });
+    {
+      std::lock_guard<std::mutex> lock(libraryMutex);
+      library = fresh;
+      libraryVersion++;
+    }
+    libraryPreloaded = false;
+    scanDone = true;
+    saveLibraryCache(cacheFile, root, fresh);
+    // Wait for the rescan key. The songs just found are the saved library of the next scan
+    while (running && !rescanRequested) { std::this_thread::sleep_for(std::chrono::milliseconds(100)); }
+    if (!running) { return; }
+    cached.clear();
+    for (auto &track : fresh) { cached[track.path] = std::move(track); }
+    live = false;
+    libraryPreloaded = true;
+    scanDone = false;
+    rescanRequested = false;
   }
-  if (!running) { return; } // the player is closing: a half finished scan is not saved
-  std::sort(fresh.begin(), fresh.end(), [](const Track &a, const Track &b) { return a.path < b.path; });
-  {
-    std::lock_guard<std::mutex> lock(libraryMutex);
-    library = fresh;
-    libraryVersion++;
-  }
-  libraryPreloaded = false;
-  scanDone = true;
-  saveLibraryCache(cacheFile, root, fresh);
 }
 
 // Songs whose title, artist or album contain the text; no text means all of them
@@ -1099,22 +1144,26 @@ std::vector<LyricLine> parseLrc(const std::string &lrc) {
   return lines;
 }
 
-// Runs in its own thread: the cached file next to the song, or the download
+// Runs in its own thread: song.lrc next to the song, or the download, which is saved as song.lrc
+// so other players can show it too. Older versions saved lrclib's answer as song.mp3.lrc: it is still read
 LyricsResult loadLyrics(Track track) {
   LyricsResult result;
   try {
-    const std::string cacheFile = track.path + ".lrc";
+    const std::string lrcFile = std::filesystem::path(track.path).replace_extension(".lrc").string();
     std::string body;
-    {
-      std::ifstream in(cacheFile);
-      if (in) {
-        std::ostringstream all;
-        all << in.rdbuf();
-        body = all.str();
+    bool haveLrc = false; // song.lrc exists, nothing has to be saved
+    for (const std::string &file : {lrcFile, track.path + ".lrc"}) {
+      std::ifstream in(file);
+      if (!in) { continue; }
+      std::ostringstream all;
+      all << in.rdbuf();
+      body = all.str();
+      if (!body.empty()) {
+        haveLrc = (file == lrcFile);
+        break;
       }
     }
-    bool fromCache = !body.empty();
-    if (!fromCache) {
+    if (body.empty()) {
       if (track.artist == "Unknown Artist") {
         result.error = "The song has no artist tag, lyrics can't be looked up.";
         return result;
@@ -1124,28 +1173,31 @@ LyricsResult loadLyrics(Track track) {
         return result;
       }
     }
-    // A broken or unexpected answer must not stop the player
-    json data = json::parse(body, nullptr, false);
-    if (data.is_discarded() || !data.is_object()) {
-      result.error = "The lyrics answer can't be read.";
-      return result;
+    // lrclib's answer is JSON with synced and plain lyrics; an .lrc file has one of them
+    std::string text = body;
+    if (body[0] == '{') {
+      // A broken or unexpected answer must not stop the player
+      json data = json::parse(body, nullptr, false);
+      if (data.is_discarded() || !data.is_object()) {
+        result.error = "The lyrics answer can't be read.";
+        return result;
+      }
+      std::string synced, plain;
+      if (data.contains("syncedLyrics") && data["syncedLyrics"].is_string()) { synced = data["syncedLyrics"].get<std::string>(); }
+      if (data.contains("plainLyrics") && data["plainLyrics"].is_string()) { plain = data["plainLyrics"].get<std::string>(); }
+      text = parseLrc(synced).empty() ? plain : synced;
     }
-    std::string synced, plain;
-    if (data.contains("syncedLyrics") && data["syncedLyrics"].is_string()) { synced = data["syncedLyrics"].get<std::string>(); }
-    if (data.contains("plainLyrics") && data["plainLyrics"].is_string()) { plain = data["plainLyrics"].get<std::string>(); }
-    if (!synced.empty()) {
-      result.lines = parseLrc(synced);
-    }
-    if (result.lines.empty() && !plain.empty()) {
+    result.lines = parseLrc(text);
+    if (result.lines.empty()) {
       result.synced = false;
-      std::istringstream in(plain);
+      std::istringstream in(text);
       std::string line;
       while (std::getline(in, line)) { result.lines.push_back({-1.f, trim(line)}); }
     }
     if (result.lines.empty()) { result.error = "This song has no lyrics (instrumental?)."; }
-    if (!fromCache) {
-      std::ofstream out(cacheFile, std::ios::out | std::ios::trunc); // the music folder can be read-only: no cache then
-      if (out) { out << body; }
+    if (!haveLrc && !text.empty()) {
+      std::ofstream out(lrcFile, std::ios::out | std::ios::trunc); // the music folder can be read-only: no file then
+      if (out) { out << text; }
     }
   } catch (const std::exception &e) {
     result.lines.clear();
@@ -1274,6 +1326,7 @@ bool playLocal(App &app, const Track &track) {
   app.now = track;
   app.localActive = true;
   app.lastSong = track.path; // saved, the cursor is here at the next start
+  app.resumeAt = 0.f;
   app.stateDirty = true;
   return true;
 }
@@ -1309,9 +1362,9 @@ void playRadio(App &app, const Track &station) {
 // The songs of the queue come first
 void playNext(App &app, int direction, bool automatic) {
   const std::vector<Track> &songs = app.songs.items;
-  if (direction > 0 && !app.queue.empty() && !(automatic && app.repeat)) {
-    Track queued = app.queue.front();
-    app.queue.pop_front();
+  if (direction > 0 && !app.queue.items.empty() && !(automatic && app.repeat)) {
+    Track queued = app.queue.items.front();
+    app.queue.items.erase(app.queue.items.begin());
     for (size_t i = 0; i < songs.size(); i++) {
       if (songs[i].path == queued.path) { app.songs.highlight = static_cast<int>(i); break; }
     }
@@ -1378,6 +1431,211 @@ void autoAdvance(App &app) {
   }
 }
 
+// "Playing", "Paused" or "Stopped": the header shows it, MPRIS uses the same words
+std::string playbackStatus(const App &app) {
+  // A station that is offline or ended keeps its player, but it doesn't play
+  const libvlc_state_t radioState = app.player ? libvlc_media_player_get_state(app.player) : libvlc_Error;
+  if ((radioState != libvlc_Error && radioState != libvlc_Ended) || music.getStatus() == sf::Music::Status::Playing) { return "Playing"; }
+  return (music.getStatus() == sf::Music::Status::Paused) ? "Paused" : "Stopped";
+}
+
+// ---- MPRIS ----
+// The desktop's media keys, playerctl and player widgets call 0verau over D-Bus. The calls are
+// handled in the screen loop, so they never run at the same time as a key press
+
+#if MPRIS
+const char *const MPRIS_PATH = "/org/mpris/MediaPlayer2";
+const char *const MPRIS_PLAYER = "org.mpris.MediaPlayer2.Player";
+
+// A call does what the key of the player does
+static void pressKey(App &app, const char *action) {
+  int rows, cols;
+  getmaxyx(stdscr, rows, cols);
+  handleKey(app, app.keys.at(action), rows, cols);
+}
+
+static int mprisMethod(sd_bus_message *m, void *userdata, sd_bus_error *) {
+  App &app = *static_cast<App *>(userdata);
+  const std::string name = sd_bus_message_get_member(m);
+  const std::string status = playbackStatus(app);
+  if (name == "Next") {
+    pressKey(app, "NEXT_SONG");
+  } else if (name == "Previous") {
+    pressKey(app, "PREVIOUS_SONG");
+  } else if (name == "PlayPause" || name == "Play" || name == "Pause") {
+    if (status == "Stopped" && name != "Pause") { pressKey(app, "PLAY"); }
+    else if ((status == "Playing" && name != "Play") || (status == "Paused" && name != "Pause")) { pressKey(app, "PAUSE"); }
+  } else if (name == "Stop") {
+    app.localActive = false; // the next song must not start
+    music.stop();
+    stopRadio(app);
+  } else if (name == "Seek" || name == "SetPosition") {
+    const char *trackId = nullptr;
+    int64_t micros = 0;
+    const int r = (name == "Seek") ? sd_bus_message_read(m, "x", &micros) : sd_bus_message_read(m, "ox", &trackId, &micros);
+    if (r < 0) { return r; }
+    const float seconds = static_cast<float>(micros) / 1e6f;
+    seekBy(name == "Seek" ? seconds : seconds - music.getPlayingOffset().asSeconds());
+  } else if (name == "Quit") {
+    running = false;
+  } // Raise: there is no window to raise
+  return sd_bus_reply_method_return(m, "");
+}
+
+// The playing song: its title, artist, album and length, or the station and its stream title
+static int mprisMetadata(const App &app, sd_bus_message *reply) {
+  int r = sd_bus_message_open_container(reply, 'a', "{sv}");
+  auto add = [&](const char *key, const char *type, auto... value) {
+    if (r >= 0) { r = sd_bus_message_append(reply, "{sv}", key, type, value...); }
+  };
+  if (app.source == Source::None) {
+    add("mpris:trackid", "o", "/org/mpris/MediaPlayer2/TrackList/NoTrack");
+  } else {
+    std::string title = app.now.title;
+    if (app.source == Source::Radio) {
+      std::lock_guard<std::mutex> lock(metaMutex);
+      if (!streamTitle.empty()) { title = streamTitle; }
+    }
+    add("mpris:trackid", "o", (std::string(MPRIS_PATH) + "/Track/" + hashHex(app.now.path + app.now.url)).c_str());
+    add("xesam:title", "s", title.c_str());
+    if (app.source == Source::Local) {
+      add("xesam:artist", "as", 1, app.now.artist.c_str());
+      add("xesam:album", "s", app.now.album.c_str());
+      add("mpris:length", "x", static_cast<int64_t>(music.getDuration().asSeconds() * 1e6f));
+    } else {
+      add("xesam:url", "s", app.now.url.c_str());
+    }
+  }
+  return (r < 0) ? r : sd_bus_message_close_container(reply);
+}
+
+static int mprisProperty(sd_bus *, const char *, const char *, const char *property, sd_bus_message *reply, void *userdata, sd_bus_error *) {
+  const App &app = *static_cast<const App *>(userdata);
+  const std::string name = property;
+  if (name == "PlaybackStatus") { return sd_bus_message_append(reply, "s", playbackStatus(app).c_str()); }
+  if (name == "LoopStatus") { return sd_bus_message_append(reply, "s", app.repeat ? "Track" : "None"); }
+  if (name == "Shuffle") { return sd_bus_message_append(reply, "b", static_cast<int>(app.shuffle)); }
+  if (name == "Volume") { return sd_bus_message_append(reply, "d", static_cast<double>(app.volume) / 100.0); }
+  if (name == "Position") {
+    const bool local = app.source == Source::Local;
+    return sd_bus_message_append(reply, "x", static_cast<int64_t>(local ? music.getPlayingOffset().asSeconds() * 1e6f : 0.f));
+  }
+  if (name == "Metadata") { return mprisMetadata(app, reply); }
+  if (name == "Rate" || name == "MinimumRate" || name == "MaximumRate") { return sd_bus_message_append(reply, "d", 1.0); }
+  if (name == "Identity") { return sd_bus_message_append(reply, "s", "0verau"); }
+  if (name == "SupportedUriSchemes" || name == "SupportedMimeTypes") { return sd_bus_message_append(reply, "as", 0); }
+  if (name == "CanRaise" || name == "HasTrackList") { return sd_bus_message_append(reply, "b", 0); }
+  return sd_bus_message_append(reply, "b", 1); // CanQuit, CanPlay, CanGoNext and the other Can... properties
+}
+
+// Volume, shuffle and repeat can be changed by the desktop too, like with their keys
+static int mprisSetProperty(sd_bus *, const char *, const char *, const char *property, sd_bus_message *value, void *userdata, sd_bus_error *) {
+  App &app = *static_cast<App *>(userdata);
+  const std::string name = property;
+  int r = 0;
+  if (name == "Volume") {
+    double volume = 0.0;
+    if ((r = sd_bus_message_read(value, "d", &volume)) < 0) { return r; }
+    changeVolume(app, static_cast<float>(volume * 100.0) - app.volume);
+  } else if (name == "Shuffle") {
+    int on = 0;
+    if ((r = sd_bus_message_read(value, "b", &on)) < 0) { return r; }
+    app.shuffle = on != 0;
+    app.stateDirty = true;
+  } else { // LoopStatus: "Track" repeats the song, "None" and "Playlist" go on through the list
+    const char *loop = nullptr;
+    if ((r = sd_bus_message_read(value, "s", &loop)) < 0) { return r; }
+    app.repeat = std::string(loop) == "Track";
+    app.stateDirty = true;
+  }
+  return 0;
+}
+
+#define MPRIS_CONST(name, type) SD_BUS_PROPERTY(name, type, mprisProperty, 0, SD_BUS_VTABLE_PROPERTY_CONST)
+#define MPRIS_CHANGES(name, type) SD_BUS_PROPERTY(name, type, mprisProperty, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE)
+#define MPRIS_WRITABLE(name, type) SD_BUS_WRITABLE_PROPERTY(name, type, mprisProperty, mprisSetProperty, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE)
+
+const sd_bus_vtable MPRIS_ROOT_VTABLE[] = {
+  SD_BUS_VTABLE_START(0),
+  SD_BUS_METHOD("Raise", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("Quit", "", "", mprisMethod, 0),
+  MPRIS_CONST("CanQuit", "b"),
+  MPRIS_CONST("CanRaise", "b"),
+  MPRIS_CONST("HasTrackList", "b"),
+  MPRIS_CONST("Identity", "s"),
+  MPRIS_CONST("SupportedUriSchemes", "as"),
+  MPRIS_CONST("SupportedMimeTypes", "as"),
+  SD_BUS_VTABLE_END
+};
+
+const sd_bus_vtable MPRIS_PLAYER_VTABLE[] = {
+  SD_BUS_VTABLE_START(0),
+  SD_BUS_METHOD("Next", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("Previous", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("Pause", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("PlayPause", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("Stop", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("Play", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("Seek", "x", "", mprisMethod, 0),
+  SD_BUS_METHOD("SetPosition", "ox", "", mprisMethod, 0),
+  MPRIS_CHANGES("PlaybackStatus", "s"),
+  MPRIS_WRITABLE("LoopStatus", "s"),
+  MPRIS_WRITABLE("Shuffle", "b"),
+  MPRIS_WRITABLE("Volume", "d"),
+  MPRIS_CHANGES("Metadata", "a{sv}"),
+  SD_BUS_PROPERTY("Position", "x", mprisProperty, 0, 0), // changes all the time, it is only read
+  MPRIS_CONST("Rate", "d"),
+  MPRIS_CONST("MinimumRate", "d"),
+  MPRIS_CONST("MaximumRate", "d"),
+  MPRIS_CONST("CanGoNext", "b"),
+  MPRIS_CONST("CanGoPrevious", "b"),
+  MPRIS_CONST("CanPlay", "b"),
+  MPRIS_CONST("CanPause", "b"),
+  MPRIS_CONST("CanSeek", "b"),
+  MPRIS_CONST("CanControl", "b"),
+  SD_BUS_VTABLE_END
+};
+
+void mprisStart(App &app) {
+  if (sd_bus_open_user(&app.bus) < 0) { // no desktop session (a console, ssh): everything else works
+    app.bus = nullptr;
+    return;
+  }
+  // A second running player gets its own name, as the MPRIS rules say
+  const std::string name = "org.mpris.MediaPlayer2.overau";
+  if (sd_bus_add_object_vtable(app.bus, nullptr, MPRIS_PATH, "org.mpris.MediaPlayer2", MPRIS_ROOT_VTABLE, &app) < 0
+      || sd_bus_add_object_vtable(app.bus, nullptr, MPRIS_PATH, MPRIS_PLAYER, MPRIS_PLAYER_VTABLE, &app) < 0
+      || (sd_bus_request_name(app.bus, name.c_str(), 0) < 0
+          && sd_bus_request_name(app.bus, (name + ".instance" + std::to_string(getpid())).c_str(), 0) < 0)) {
+    app.bus = sd_bus_flush_close_unref(app.bus);
+  }
+}
+
+// Answer the calls, and tell the desktop when the song, the state or a setting changed
+void mprisUpdate(App &app) {
+  if (!app.bus) { return; }
+  std::string seen = playbackStatus(app) + "\n" + app.now.path + "\n" + app.now.url + "\n" + std::to_string(app.volume)
+    + (app.shuffle ? "S" : "") + (app.repeat ? "R" : "");
+  {
+    std::lock_guard<std::mutex> lock(metaMutex);
+    seen += streamTitle;
+  }
+  if (seen != app.mprisSeen) {
+    app.mprisSeen = seen;
+    sd_bus_emit_properties_changed(app.bus, MPRIS_PATH, MPRIS_PLAYER, "PlaybackStatus", "Metadata", "Volume", "Shuffle", "LoopStatus", nullptr);
+  }
+  while (sd_bus_process(app.bus, nullptr) > 0) {}
+}
+
+void mprisStop(App &app) {
+  if (app.bus) { app.bus = sd_bus_flush_close_unref(app.bus); }
+}
+#else
+void mprisStart(App &) {}
+void mprisUpdate(App &) {}
+void mprisStop(App &) {}
+#endif
+
 // ---- Screen ----
 
 // A line of the list: "  12. >+ Artist  Title  03:45". > is the playing item, + a favourite.
@@ -1399,18 +1657,8 @@ std::string browserLine(const App &app, const Track &track, bool radio, int inde
 
 void drawHeader(App &app, int rows, int cols) {
   (void)rows;
-  int colorPair = 3;
-  std::string status = "Stopped";
-  // A station that is offline or ended keeps its player, but it doesn't play
-  const libvlc_state_t radioState = app.player ? libvlc_media_player_get_state(app.player) : libvlc_Error;
-  const bool radioOn = radioState != libvlc_Error && radioState != libvlc_Ended;
-  if (radioOn || music.getStatus() == sf::Music::Status::Playing) {
-    status = "Playing";
-    colorPair = 1;
-  } else if (music.getStatus() == sf::Music::Status::Paused) {
-    status = "Paused";
-    colorPair = 2;
-  }
+  const std::string status = playbackStatus(app);
+  const int colorPair = (status == "Playing") ? 1 : (status == "Paused") ? 2 : 3;
   std::string title = "No track selected";
   if (app.source == Source::Local) {
     title = app.now.title;
@@ -1431,7 +1679,13 @@ void drawHeader(App &app, int rows, int cols) {
   mvaddstr(1, 0, fitWidth(help, cols).c_str()); // a longer line would wrap into the list
 }
 
-// The songs or the radio stations; the cursor line is highlighted
+// The list the keys work on: the stations, the queue or the songs
+List &activeList(App &app) {
+  if (app.showRadio) { return app.stations; }
+  return (app.showQueue && !app.showLyrics) ? app.queue : app.songs;
+}
+
+// The songs, the queue or the radio stations; the cursor line is highlighted
 void drawBrowser(App &app, List &list, bool radio, int rows, int x, int width) {
   const int visible = std::max(1, rows - 7);
   const int count = static_cast<int>(list.items.size());
@@ -1439,7 +1693,10 @@ void drawBrowser(App &app, List &list, bool radio, int rows, int x, int width) {
     list.highlight = 0;
     list.offset = 0;
     std::string hint;
-    if (app.showFavs) {
+    if (&list == &app.queue) {
+      hint = "The queue is empty. Press " + keyLabel(app.keys.at("QUEUE")) + " on a song to add it, "
+        + keyLabel(app.keys.at("SHOW_HIDE_QUEUE")) + " shows the songs again.";
+    } else if (app.showFavs) {
       hint = "No favourites here yet. Press " + keyLabel(app.keys.at("FAVOURITE")) + " on an item to add it, "
         + keyLabel(app.keys.at("SHOW_HIDE_FAVOURITES")) + " shows everything again.";
     } else if (radio) {
@@ -1470,7 +1727,7 @@ void drawBrowser(App &app, List &list, bool radio, int rows, int x, int width) {
 
 // Width of the album list, 0 when it is not shown: it belongs to the song list and needs a wide terminal
 int sidebarWidth(const App &app, int cols) {
-  if (!app.showSidebar || app.showRadio || app.showLyrics || cols < 60) { return 0; }
+  if (!app.showSidebar || app.showRadio || app.showLyrics || app.showQueue || cols < 60) { return 0; }
   return std::clamp(cols / 4, 18, 32);
 }
 
@@ -1890,7 +2147,7 @@ void drawProgressBarWithTime(float elapsed, float total, int cols, int y) {
 void drawFooter(App &app, int rows, int cols, bool listView) {
   auto onOff = [](bool value) { return value ? "ON" : "OFF"; };
   if (listView) {
-    const List &list = app.showRadio ? app.stations : app.songs;
+    const List &list = activeList(app);
     const std::string volume = "Volume: " + std::to_string(static_cast<int>(app.volume)) + "%";
     std::string toggles, info;
     if (app.showRadio) {
@@ -1899,7 +2156,9 @@ void drawFooter(App &app, int rows, int cols, bool listView) {
     } else {
       toggles = std::string("Shuffle: ") + onOff(app.shuffle) + " | Repeat: " + onOff(app.repeat) + " | Show Album " + onOff(app.showAlbum)
         + " | Show Artist " + onOff(app.showArtist) + " | Favourites only: " + onOff(app.showFavs);
-      if (!scanDone) {
+      if (app.showQueue) {
+        info = "Queue: " + std::to_string(list.items.size()) + " | " + volume;
+      } else if (!scanDone) {
         info = std::string(libraryPreloaded ? "Checking the library for changes... " : "Scanning for songs, please wait.... ")
           + "(" + std::to_string(list.items.size()) + " found)";
       } else {
@@ -1908,7 +2167,7 @@ void drawFooter(App &app, int rows, int cols, bool listView) {
           info += " | Album: " + app.sidebar.items[app.sidebar.highlight].name;
         }
         info += std::string(" | Sort: ") + SORT_NAMES[app.sortMode];
-        if (!app.queue.empty()) { info += " | Queue: " + std::to_string(app.queue.size()); }
+        if (!app.queue.items.empty()) { info += " | Queue: " + std::to_string(app.queue.items.size()); }
         info += " | " + volume;
       }
     }
@@ -1964,7 +2223,11 @@ std::string promptLine(int rows, const std::string &label) {
 }
 
 void doSearch(App &app, int rows) {
-  List &list = app.showRadio ? app.stations : app.songs;
+  List &list = activeList(app);
+  if (&list == &app.queue) {
+    setMessage(app, "Search works in the song list.");
+    return;
+  }
   list.query = promptLine(rows, "Search: ");
   if (app.showRadio) { rebuildStationView(app); } else { rebuildSongView(app); }
   list.highlight = 0;
@@ -1973,7 +2236,7 @@ void doSearch(App &app, int rows) {
 
 // Jump to a number of the list: the songs are numbered from 1
 void gotoNumber(App &app, int rows) {
-  List &list = app.showRadio ? app.stations : app.songs;
+  List &list = activeList(app);
   const int count = static_cast<int>(list.items.size());
   if (count == 0) { return; }
   const std::string text = promptLine(rows, "Go to number (1-" + std::to_string(count) + "): ");
@@ -2016,12 +2279,16 @@ void handleKey(App &app, int ch, int rows, int cols) {
       selectAlbum(app);
       return;
     }
-    if (action == "PLAY" || ch == KEY_RIGHT) { // go to the songs of the album
+    if (action == "PLAY" || ch == KEY_RIGHT) { // go to the songs of the album, Enter also plays the first one
       app.sidebarFocus = false;
+      if (action == "PLAY" && !app.songs.items.empty()) {
+        app.songs.highlight = 0;
+        playLocal(app, app.songs.items[0]);
+      }
       return;
     }
   }
-  List &list = app.showRadio ? app.stations : app.songs;
+  List &list = activeList(app);
   const int count = static_cast<int>(list.items.size());
   const int page = std::max(1, rows - 7);
   if (action == "UP") {
@@ -2038,8 +2305,13 @@ void handleKey(App &app, int ch, int rows, int cols) {
     list.highlight = std::max(0, count - 1);
   } else if (action == "PLAY") {
     if (count > 0) {
-      if (app.showRadio) { playRadio(app, list.items[list.highlight]); }
-      else { playLocal(app, list.items[list.highlight]); }
+      if (app.showRadio) {
+        playRadio(app, list.items[list.highlight]);
+      } else {
+        const Track track = list.items[list.highlight]; // a copy: in the queue view it leaves the queue
+        if (&list == &app.queue) { list.items.erase(list.items.begin() + list.highlight); }
+        playLocal(app, track);
+      }
     }
   } else if (action == "NEXT_SONG" || action == "PREVIOUS_SONG") {
     const int direction = (action == "NEXT_SONG") ? 1 : -1;
@@ -2122,15 +2394,34 @@ void handleKey(App &app, int ch, int rows, int cols) {
   } else if (action == "GOTO") {
     gotoNumber(app, rows);
   } else if (action == "QUEUE") {
-    if (!app.showRadio && count > 0) {
-      app.queue.push_back(list.items[list.highlight]);
-      setMessage(app, "Queued (" + std::to_string(app.queue.size()) + "): " + list.items[list.highlight].title);
+    if (&list == &app.queue && count > 0) {
+      setMessage(app, "Removed from the queue: " + list.items[list.highlight].title);
+      list.items.erase(list.items.begin() + list.highlight);
+    } else if (!app.showRadio && count > 0) {
+      app.queue.items.push_back(list.items[list.highlight]);
+      setMessage(app, "Queued (" + std::to_string(app.queue.items.size()) + "): " + list.items[list.highlight].title);
     }
+  } else if (action == "SHOW_HIDE_QUEUE") {
+    if (app.showRadio || app.showLyrics) {
+      setMessage(app, "The queue is shown in place of the song list.");
+    } else {
+      app.showQueue = !app.showQueue;
+    }
+  } else if (action == "CLEAR_QUEUE") {
+    app.queue.items.clear();
+    setMessage(app, "The queue is empty.");
   } else if (action == "SORT") {
     app.sortMode = (app.sortMode + 1) % SORT_MODES;
     app.stateDirty = true;
     rebuildSongView(app);
     setMessage(app, std::string("Songs sorted by ") + SORT_NAMES[app.sortMode]);
+  } else if (action == "RESCAN") {
+    if (scanDone) {
+      rescanRequested = true;
+      setMessage(app, "Looking for new songs...");
+    } else {
+      setMessage(app, "The music folder is being scanned already.");
+    }
   } else if (action == "EXPORT_FAVOURITES") {
     exportFavourites(app);
   } else if (action == "SEARCH") {

@@ -42,6 +42,24 @@ int main() {
   const Track &b = loaded.at("/music/a.mp3");
   assert(b.title == "Caf\xC3\xA9 with tab" && b.album == "Album" && b.duration == "03:05" && b.size == 123 && b.mtime == 456);
   assert(loadLibraryCache(file, "/other").empty()); // the library of another folder is not used
+
+  // Lyrics files: song.lrc is read as it is; lrclib's JSON of older versions is read and saved as song.lrc
+  Track song;
+  song.path = (dir / "a.mp3").string();
+  std::ofstream(dir / "a.lrc") << "[00:01.00]hello\n";
+  LyricsResult lyrics = loadLyrics(song);
+  assert(lyrics.error.empty() && lyrics.synced && lyrics.lines.size() == 1 && lyrics.lines[0].text == "hello");
+  song.path = (dir / "b.mp3").string();
+  std::ofstream(dir / "b.mp3.lrc") << R"({"syncedLyrics":"[00:02.00]hi","plainLyrics":"hi"})";
+  lyrics = loadLyrics(song);
+  assert(lyrics.error.empty() && lyrics.synced && lyrics.lines.size() == 1 && lyrics.lines[0].time == 2.f);
+  std::ostringstream saved;
+  saved << std::ifstream(dir / "b.lrc").rdbuf();
+  assert(saved.str() == "[00:02.00]hi");
+  song.path = (dir / "c.mp3").string();
+  std::ofstream(dir / "c.mp3.lrc") << R"({"syncedLyrics":null,"plainLyrics":"one\ntwo"})";
+  lyrics = loadLyrics(song);
+  assert(lyrics.error.empty() && !lyrics.synced && lyrics.lines.size() == 2 && lyrics.lines[1].text == "two");
   fs::remove_all(dir);
 
   // Lyrics: tags are skipped, a line with two times is there twice, the lines are in time order

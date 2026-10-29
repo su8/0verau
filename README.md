@@ -29,9 +29,21 @@ Start the program with your music folder: `0verau mp3/folder`. For online radio 
 
 # Requirements
 
-In Debian it's `sudo apt install libncurses5-dev libncursesw5-dev libsfml-dev libtag1-dev curl libcurl4-openssl-dev libvlc-dev libvlc-bin vlc`, in your other OS's search for `lib ncurses lib sfml lib tag  lib curl lib vlc vlc`.
+In Debian it's `sudo apt install libncurses5-dev libncursesw5-dev libsfml-dev libtag1-dev curl libcurl4-openssl-dev libvlc-dev libvlc-bin vlc libsystemd-dev`, in your other OS's search for `lib ncurses lib sfml lib tag  lib curl lib vlc vlc lib systemd`.
 
 SFML 2.6 or newer is needed (SFML 3 works too): older SFML can't play MP3 files.
+
+libsystemd is used for the media keys (see below). Without systemd, build with `make MPRIS=0`.
+
+### Media keys and playerctl
+
+0verau is an MPRIS player: the play/pause, next and previous keys of your keyboard, `playerctl` and the music widget of your desktop control it. With `playerctl` its name is `overau`:
+
+```bash
+playerctl -p overau play-pause
+playerctl -p overau next
+playerctl -p overau metadata title
+```
 
 ---
 
@@ -63,10 +75,15 @@ PREVIOUS_SONG=*
 FAVOURITE=f
 SHOW_HIDE_FAVOURITES=F
 GOTO=:
+# in the queue view (SHOW_HIDE_QUEUE) QUEUE removes the song and Enter plays it
 QUEUE=a
+SHOW_HIDE_QUEUE=Q
+CLEAR_QUEUE=X
 SORT=s
+RESCAN=R
 EXPORT_FAVOURITES=E
 SHOW_HIDE_SIDEBAR=g
+# in the album list, Enter plays the album and the right arrow goes to its songs
 # switch between the album list and the songs
 SWITCH_FOCUS=TAB
 SHOW_HIDE_ART=c
@@ -76,10 +93,10 @@ A comment must be on its own line: `#` is a key too. `ENTER`, `SPACE` and `TAB` 
 
 # Saved files
 
-- `~/.config/0verau/state.conf`: volume, shuffle, repeat, sort order, the selected album and the last song. Saved when you change them and when you quit.
+- `~/.config/0verau/state.conf`: volume, shuffle, repeat, sort order, the selected album, and the last song with the point where it stopped (it starts there, paused, at the next start). Saved when you change them and when you quit.
 - `~/.config/0verau/favourites.txt`: your favourite songs and stations.
 - `~/.cache/0verau/`: the song list of each music folder, so the next start doesn't read every file again.
-- `song.mp3.lrc` next to a song: its downloaded lyrics.
+- `song.lrc` next to `song.mp3`: its lyrics, as a normal .lrc file that other players can show too. A `song.lrc` you put there yourself is used as well.
 
 `$XDG_CONFIG_HOME` and `$XDG_CACHE_HOME` are used when they are set.
 
