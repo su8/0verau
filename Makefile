@@ -17,6 +17,7 @@
 CFLAGS+=-g2 -Wall -Wextra -O2 -std=c++20 -D_DEFAULT_SOURCE -pipe -pedantic -Wundef -Wshadow -W -Wwrite-strings -Wcast-align -Wstrict-overflow=5 -Wconversion -Wpointer-arith -Wformat=2 -Wsign-compare -Wendif-labels -Wredundant-decls -Winit-self
 LDFLAGS+=-lncursesw -lsfml-audio -lsfml-system -lsfml-graphics -ltag -pthread -lcurl -lm -lvlc
 PACKAGE=0verau
+PREFIX?=/usr
 PROG=main.cpp
 
 all:
@@ -27,12 +28,12 @@ check:
 	./$(PACKAGE)-test
 
 install: 
-	install -D -s -m 755 $(PACKAGE) /usr/bin/$(PACKAGE)
+	install -D -s -m 755 $(PACKAGE) $(DESTDIR)$(PREFIX)/bin/$(PACKAGE)
 
 clean:
 	rm -f $(PACKAGE) $(PACKAGE)-test
 
 uninstall:
-	rm -f /usr/bin/$(PACKAGE)
+	rm -f $(DESTDIR)$(PREFIX)/bin/$(PACKAGE)
 
 .PHONY: all check install clean uninstall
