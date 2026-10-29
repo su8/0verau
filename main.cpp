@@ -1393,7 +1393,10 @@ void drawHeader(App &app, int rows, int cols) {
   (void)rows;
   int colorPair = 3;
   std::string status = "Stopped";
-  if (app.player || music.getStatus() == sf::Music::Status::Playing) {
+  // A station that is offline or ended keeps its player, but it doesn't play
+  const libvlc_state_t radioState = app.player ? libvlc_media_player_get_state(app.player) : libvlc_Error;
+  const bool radioOn = radioState != libvlc_Error && radioState != libvlc_Ended;
+  if (radioOn || music.getStatus() == sf::Music::Status::Playing) {
     status = "Playing";
     colorPair = 1;
   } else if (music.getStatus() == sf::Music::Status::Paused) {
