@@ -1528,8 +1528,32 @@ static int mprisProperty(sd_bus *, const char *, const char *, const char *prope
   return sd_bus_message_append(reply, "b", 1); // CanQuit, CanPlay, CanGoNext and the other Can... properties
 }
 
+// Volume, shuffle and repeat can be changed by the desktop too, like with their keys
+static int mprisSetProperty(sd_bus *, const char *, const char *, const char *property, sd_bus_message *value, void *userdata, sd_bus_error *) {
+  App &app = *static_cast<App *>(userdata);
+  const std::string name = property;
+  int r = 0;
+  if (name == "Volume") {
+    double volume = 0.0;
+    if ((r = sd_bus_message_read(value, "d", &volume)) < 0) { return r; }
+    changeVolume(app, static_cast<float>(volume * 100.0) - app.volume);
+  } else if (name == "Shuffle") {
+    int on = 0;
+    if ((r = sd_bus_message_read(value, "b", &on)) < 0) { return r; }
+    app.shuffle = on != 0;
+    app.stateDirty = true;
+  } else { // LoopStatus: "Track" repeats the song, "None" and "Playlist" go on through the list
+    const char *loop = nullptr;
+    if ((r = sd_bus_message_read(value, "s", &loop)) < 0) { return r; }
+    app.repeat = std::string(loop) == "Track";
+    app.stateDirty = true;
+  }
+  return 0;
+}
+
 #define MPRIS_CONST(name, type) SD_BUS_PROPERTY(name, type, mprisProperty, 0, SD_BUS_VTABLE_PROPERTY_CONST)
 #define MPRIS_CHANGES(name, type) SD_BUS_PROPERTY(name, type, mprisProperty, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE)
+#define MPRIS_WRITABLE(name, type) SD_BUS_WRITABLE_PROPERTY(name, type, mprisProperty, mprisSetProperty, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE)
 
 const sd_bus_vtable MPRIS_ROOT_VTABLE[] = {
   SD_BUS_VTABLE_START(0),
@@ -1555,9 +1579,9 @@ const sd_bus_vtable MPRIS_PLAYER_VTABLE[] = {
   SD_BUS_METHOD("Seek", "x", "", mprisMethod, 0),
   SD_BUS_METHOD("SetPosition", "ox", "", mprisMethod, 0),
   MPRIS_CHANGES("PlaybackStatus", "s"),
-  MPRIS_CHANGES("LoopStatus", "s"),
-  MPRIS_CHANGES("Shuffle", "b"),
-  MPRIS_CHANGES("Volume", "d"),
+  MPRIS_WRITABLE("LoopStatus", "s"),
+  MPRIS_WRITABLE("Shuffle", "b"),
+  MPRIS_WRITABLE("Volume", "d"),
   MPRIS_CHANGES("Metadata", "a{sv}"),
   SD_BUS_PROPERTY("Position", "x", mprisProperty, 0, 0), // changes all the time, it is only read
   MPRIS_CONST("Rate", "d"),
