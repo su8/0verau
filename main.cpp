@@ -2027,8 +2027,12 @@ void handleKey(App &app, int ch, int rows, int cols) {
       selectAlbum(app);
       return;
     }
-    if (action == "PLAY" || ch == KEY_RIGHT) { // go to the songs of the album
+    if (action == "PLAY" || ch == KEY_RIGHT) { // go to the songs of the album, Enter also plays the first one
       app.sidebarFocus = false;
+      if (action == "PLAY" && !app.songs.items.empty()) {
+        app.songs.highlight = 0;
+        playLocal(app, app.songs.items[0]);
+      }
       return;
     }
   }

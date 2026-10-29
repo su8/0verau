@@ -67,6 +67,7 @@ QUEUE=a
 SORT=s
 EXPORT_FAVOURITES=E
 SHOW_HIDE_SIDEBAR=g
+# in the album list, Enter plays the album and the right arrow goes to its songs
 # switch between the album list and the songs
 SWITCH_FOCUS=TAB
 SHOW_HIDE_ART=c
