@@ -190,6 +190,7 @@ struct App {
   std::set<std::string> favStations;
   // Saved settings
   std::string lastSong;          // the cursor goes back to this song at the start
+  float resumeAt = 0.f;          // seconds into lastSong where it stopped, it starts there paused
   bool restoreCursor = false;
   bool stateDirty = false;
   std::chrono::steady_clock::time_point lastStateSave = std::chrono::steady_clock::now();
@@ -413,6 +414,11 @@ void runUi(App &app) {
           if (app.songs.items[i].path == app.lastSong) {
             app.songs.highlight = static_cast<int>(i);
             app.restoreCursor = false;
+            const float at = app.resumeAt; // playLocal clears it
+            if (at > 0.f && playLocal(app, app.songs.items[i])) {
+              music.pause();
+              music.setPlayingOffset(sf::seconds(at));
+            }
             break;
           }
         }
@@ -664,6 +670,7 @@ void loadState(App &app) {
       else if (key == "show_art") { app.showArt = (val == "1"); }
       else if (key == "album") { app.albumFilter = lower(val); }
       else if (key == "last_song") { app.lastSong = raw; }
+      else if (key == "last_position") { app.resumeAt = std::max(0.f, std::stof(val)); }
     } catch (const std::exception &) {
       // a damaged value is ignored, the default stays
     }
@@ -685,6 +692,9 @@ bool saveState(App &app) {
       << "show_art=" << (app.showArt ? 1 : 0) << "\n";
   if (!app.lastSong.empty() && app.lastSong.find_first_of("\r\n") == std::string::npos) {
     out << "last_song=" << app.lastSong << "\n";
+    // Where the song is now, or where it stopped last time if nothing was played since
+    const bool playing = app.source == Source::Local && music.getStatus() != sf::Music::Status::Stopped;
+    out << "last_position=" << static_cast<int>(playing ? music.getPlayingOffset().asSeconds() : app.resumeAt) << "\n";
   }
   if (app.showSidebar && !app.albumFilter.empty() && app.albumFilter.find_first_of("\r\n") == std::string::npos) {
     out << "album=" << app.albumFilter << "\n"; // the selected album is selected again at the next start
@@ -1274,6 +1284,7 @@ bool playLocal(App &app, const Track &track) {
   app.now = track;
   app.localActive = true;
   app.lastSong = track.path; // saved, the cursor is here at the next start
+  app.resumeAt = 0.f;
   app.stateDirty = true;
   return true;
 }

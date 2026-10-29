@@ -76,7 +76,7 @@ A comment must be on its own line: `#` is a key too. `ENTER`, `SPACE` and `TAB` 
 
 # Saved files
 
-- `~/.config/0verau/state.conf`: volume, shuffle, repeat, sort order, the selected album and the last song. Saved when you change them and when you quit.
+- `~/.config/0verau/state.conf`: volume, shuffle, repeat, sort order, the selected album, and the last song with the point where it stopped (it starts there, paused, at the next start). Saved when you change them and when you quit.
 - `~/.config/0verau/favourites.txt`: your favourite songs and stations.
 - `~/.cache/0verau/`: the song list of each music folder, so the next start doesn't read every file again.
 - `song.mp3.lrc` next to a song: its downloaded lyrics.
