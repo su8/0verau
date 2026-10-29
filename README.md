@@ -31,6 +31,8 @@ To start the program you must supply 2 arguments, `0verau mp3/folder 'm3u/folder
 
 In Debian it's `sudo apt install libncurses5-dev libncursesw5-dev libsfml-dev libtag1-dev curl libcurl4-openssl-dev libvlc-dev libvlc-bin vlc`, in your other OS's search for `lib ncurses lib sfml lib tag  lib curl lib vlc vlc`.
 
+SFML 2.6 or newer is needed (SFML 3 works too): older SFML can't play MP3 files.
+
 ---
 
 # keybinds

@@ -1271,7 +1271,7 @@ void playRadio(App &app, const Track &station) {
     setMessage(app, "Error: libVLC is not available.");
     return;
   }
-  if (music.getStatus() != sf::Music::Stopped) { music.stop(); }
+  if (music.getStatus() != sf::Music::Status::Stopped) { music.stop(); }
   app.localActive = false;
   stopRadio(app);
   libvlc_media_t *media = libvlc_media_new_location(app.vlc, station.url.c_str());
@@ -1337,9 +1337,9 @@ void togglePause(App &app) {
     stopRadio(app);
     return;
   }
-  if (music.getStatus() == sf::Music::Playing) {
+  if (music.getStatus() == sf::Music::Status::Playing) {
     music.pause();
-  } else if (music.getStatus() == sf::Music::Paused) {
+  } else if (music.getStatus() == sf::Music::Status::Paused) {
     music.play();
   }
 }
@@ -1352,7 +1352,7 @@ void changeVolume(App &app, float delta) {
 }
 
 void seekBy(float seconds) {
-  if (music.getStatus() == sf::Music::Stopped) { return; }
+  if (music.getStatus() == sf::Music::Status::Stopped) { return; }
   float position = music.getPlayingOffset().asSeconds() + seconds;
   position = std::clamp(position, 0.f, music.getDuration().asSeconds());
   music.setPlayingOffset(sf::seconds(position));
@@ -1360,7 +1360,7 @@ void seekBy(float seconds) {
 
 // Auto-play next track when a song ended
 void autoAdvance(App &app) {
-  if (app.source == Source::Local && app.localActive && music.getStatus() == sf::Music::Stopped) {
+  if (app.source == Source::Local && app.localActive && music.getStatus() == sf::Music::Status::Stopped) {
     app.localActive = false; // if the next song can't be opened, don't try again every frame
     playNext(app, 1, true);
   }
@@ -1389,10 +1389,10 @@ void drawHeader(App &app, int rows, int cols) {
   (void)rows;
   int colorPair = 3;
   std::string status = "Stopped";
-  if (app.player || music.getStatus() == sf::Music::Playing) {
+  if (app.player || music.getStatus() == sf::Music::Status::Playing) {
     status = "Playing";
     colorPair = 1;
-  } else if (music.getStatus() == sf::Music::Paused) {
+  } else if (music.getStatus() == sf::Music::Status::Paused) {
     status = "Paused";
     colorPair = 2;
   }
@@ -1901,7 +1901,7 @@ void drawFooter(App &app, int rows, int cols, bool listView) {
     mvaddstr(rows - 4, 0, fitWidth(info, cols).c_str());
     if (!list.query.empty()) { mvaddstr(rows - 3, 0, fitWidth("Search: " + list.query, cols).c_str()); }
   }
-  if (app.source == Source::Local && music.getStatus() != sf::Music::Stopped) {
+  if (app.source == Source::Local && music.getStatus() != sf::Music::Status::Stopped) {
     drawProgressBarWithTime(music.getPlayingOffset().asSeconds(), music.getDuration().asSeconds(), cols, rows - 2);
   }
   if (!app.message.empty() && std::chrono::steady_clock::now() < app.messageUntil) {
