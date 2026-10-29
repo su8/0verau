@@ -16,6 +16,12 @@
 
 CFLAGS+=-g2 -Wall -Wextra -O2 -std=c++20 -D_DEFAULT_SOURCE -pipe -pedantic -Wundef -Wshadow -W -Wwrite-strings -Wcast-align -Wstrict-overflow=5 -Wconversion -Wpointer-arith -Wformat=2 -Wsign-compare -Wendif-labels -Wredundant-decls -Winit-self
 LDFLAGS+=-lncursesw -lsfml-audio -lsfml-system -lsfml-graphics -ltag -pthread -lcurl -lm -lvlc
+# make MPRIS=0: no media keys and playerctl, for systems without libsystemd
+MPRIS?=1
+CFLAGS+=-DMPRIS=$(MPRIS)
+ifeq ($(MPRIS),1)
+LDFLAGS+=-lsystemd
+endif
 PACKAGE=0verau
 PREFIX?=/usr
 PROG=main.cpp

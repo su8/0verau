@@ -29,9 +29,21 @@ Start the program with your music folder: `0verau mp3/folder`. For online radio 
 
 # Requirements
 
-In Debian it's `sudo apt install libncurses5-dev libncursesw5-dev libsfml-dev libtag1-dev curl libcurl4-openssl-dev libvlc-dev libvlc-bin vlc`, in your other OS's search for `lib ncurses lib sfml lib tag  lib curl lib vlc vlc`.
+In Debian it's `sudo apt install libncurses5-dev libncursesw5-dev libsfml-dev libtag1-dev curl libcurl4-openssl-dev libvlc-dev libvlc-bin vlc libsystemd-dev`, in your other OS's search for `lib ncurses lib sfml lib tag  lib curl lib vlc vlc lib systemd`.
 
 SFML 2.6 or newer is needed (SFML 3 works too): older SFML can't play MP3 files.
+
+libsystemd is used for the media keys (see below). Without systemd, build with `make MPRIS=0`.
+
+### Media keys and playerctl
+
+0verau is an MPRIS player: the play/pause, next and previous keys of your keyboard, `playerctl` and the music widget of your desktop control it. With `playerctl` its name is `overau`:
+
+```bash
+playerctl -p overau play-pause
+playerctl -p overau next
+playerctl -p overau metadata title
+```
 
 ---
 

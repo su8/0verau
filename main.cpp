@@ -52,6 +52,13 @@
 #include <curl/curl.h>
 #include <vlc/vlc.h>
 #include "json.hpp"
+#ifndef MPRIS
+#define MPRIS 1 // make MPRIS=0 builds without libsystemd, and without media keys
+#endif
+#if MPRIS
+#include <systemd/sd-bus.h>
+#include <unistd.h>
+#endif
 
 using json = nlohmann::json;
 
@@ -206,6 +213,10 @@ struct App {
   std::future<LyricsResult> lyricsFuture;
   bool lyricsLoading = false;
   unsigned int seenLibraryVersion = 0xFFFFFFFFU;
+#if MPRIS
+  sd_bus *bus = nullptr;         // the session bus, null when there is no desktop session
+  std::string mprisSeen;         // what the desktop was told last
+#endif
 };
 
 sf::Music music;
@@ -294,6 +305,11 @@ void togglePause(App &app);
 void changeVolume(App &app, float delta);
 void seekBy(float seconds);
 void autoAdvance(App &app);
+std::string playbackStatus(const App &app);
+// MPRIS: media keys, playerctl and the player widgets of the desktop
+void mprisStart(App &app);
+void mprisUpdate(App &app);
+void mprisStop(App &app);
 // Screen
 std::string browserLine(const App &app, const Track &track, bool radio, int index, int numberWidth);
 void drawHeader(App &app, int rows, int cols);
@@ -369,6 +385,7 @@ int main(int argc, char *argv[]) {
     };
     app.vlc = libvlc_new(sizeof(vlcArgs) / sizeof(vlcArgs[0]), vlcArgs);
     if (!app.vlc) { setMessage(app, "Warning: libVLC could not be started, radio is not available.", 10); }
+    mprisStart(app);
     start_color();
     use_default_colors();
     init_pair(1, COLOR_GREEN, -1);  // Playing
@@ -390,6 +407,7 @@ int main(int argc, char *argv[]) {
   music.stop();
   stopRadio(app);
   if (app.vlc) { libvlc_release(app.vlc); }
+  mprisStop(app);
   scanner.join();
   if (app.lyricsLoading) { app.lyricsFuture.wait(); } // curl must be idle before its cleanup; running = false ends the download
   curl_global_cleanup();
@@ -469,6 +487,7 @@ void runUi(App &app) {
     int ch = getch();
     if (ch != ERR) { handleKey(app, ch, rows, cols); }
     autoAdvance(app);
+    mprisUpdate(app);
     // The settings are saved a moment after they change, not at every key press
     if (app.stateDirty && std::chrono::steady_clock::now() - app.lastStateSave > std::chrono::seconds(2)) { saveState(app); }
   }
@@ -1412,6 +1431,187 @@ void autoAdvance(App &app) {
   }
 }
 
+// "Playing", "Paused" or "Stopped": the header shows it, MPRIS uses the same words
+std::string playbackStatus(const App &app) {
+  // A station that is offline or ended keeps its player, but it doesn't play
+  const libvlc_state_t radioState = app.player ? libvlc_media_player_get_state(app.player) : libvlc_Error;
+  if ((radioState != libvlc_Error && radioState != libvlc_Ended) || music.getStatus() == sf::Music::Status::Playing) { return "Playing"; }
+  return (music.getStatus() == sf::Music::Status::Paused) ? "Paused" : "Stopped";
+}
+
+// ---- MPRIS ----
+// The desktop's media keys, playerctl and player widgets call 0verau over D-Bus. The calls are
+// handled in the screen loop, so they never run at the same time as a key press
+
+#if MPRIS
+const char *const MPRIS_PATH = "/org/mpris/MediaPlayer2";
+const char *const MPRIS_PLAYER = "org.mpris.MediaPlayer2.Player";
+
+// A call does what the key of the player does
+static void pressKey(App &app, const char *action) {
+  int rows, cols;
+  getmaxyx(stdscr, rows, cols);
+  handleKey(app, app.keys.at(action), rows, cols);
+}
+
+static int mprisMethod(sd_bus_message *m, void *userdata, sd_bus_error *) {
+  App &app = *static_cast<App *>(userdata);
+  const std::string name = sd_bus_message_get_member(m);
+  const std::string status = playbackStatus(app);
+  if (name == "Next") {
+    pressKey(app, "NEXT_SONG");
+  } else if (name == "Previous") {
+    pressKey(app, "PREVIOUS_SONG");
+  } else if (name == "PlayPause" || name == "Play" || name == "Pause") {
+    if (status == "Stopped" && name != "Pause") { pressKey(app, "PLAY"); }
+    else if ((status == "Playing" && name != "Play") || (status == "Paused" && name != "Pause")) { pressKey(app, "PAUSE"); }
+  } else if (name == "Stop") {
+    app.localActive = false; // the next song must not start
+    music.stop();
+    stopRadio(app);
+  } else if (name == "Seek" || name == "SetPosition") {
+    const char *trackId = nullptr;
+    int64_t micros = 0;
+    const int r = (name == "Seek") ? sd_bus_message_read(m, "x", &micros) : sd_bus_message_read(m, "ox", &trackId, &micros);
+    if (r < 0) { return r; }
+    const float seconds = static_cast<float>(micros) / 1e6f;
+    seekBy(name == "Seek" ? seconds : seconds - music.getPlayingOffset().asSeconds());
+  } else if (name == "Quit") {
+    running = false;
+  } // Raise: there is no window to raise
+  return sd_bus_reply_method_return(m, "");
+}
+
+// The playing song: its title, artist, album and length, or the station and its stream title
+static int mprisMetadata(const App &app, sd_bus_message *reply) {
+  int r = sd_bus_message_open_container(reply, 'a', "{sv}");
+  auto add = [&](const char *key, const char *type, auto... value) {
+    if (r >= 0) { r = sd_bus_message_append(reply, "{sv}", key, type, value...); }
+  };
+  if (app.source == Source::None) {
+    add("mpris:trackid", "o", "/org/mpris/MediaPlayer2/TrackList/NoTrack");
+  } else {
+    std::string title = app.now.title;
+    if (app.source == Source::Radio) {
+      std::lock_guard<std::mutex> lock(metaMutex);
+      if (!streamTitle.empty()) { title = streamTitle; }
+    }
+    add("mpris:trackid", "o", (std::string(MPRIS_PATH) + "/Track/" + hashHex(app.now.path + app.now.url)).c_str());
+    add("xesam:title", "s", title.c_str());
+    if (app.source == Source::Local) {
+      add("xesam:artist", "as", 1, app.now.artist.c_str());
+      add("xesam:album", "s", app.now.album.c_str());
+      add("mpris:length", "x", static_cast<int64_t>(music.getDuration().asSeconds() * 1e6f));
+    } else {
+      add("xesam:url", "s", app.now.url.c_str());
+    }
+  }
+  return (r < 0) ? r : sd_bus_message_close_container(reply);
+}
+
+static int mprisProperty(sd_bus *, const char *, const char *, const char *property, sd_bus_message *reply, void *userdata, sd_bus_error *) {
+  const App &app = *static_cast<const App *>(userdata);
+  const std::string name = property;
+  if (name == "PlaybackStatus") { return sd_bus_message_append(reply, "s", playbackStatus(app).c_str()); }
+  if (name == "LoopStatus") { return sd_bus_message_append(reply, "s", app.repeat ? "Track" : "None"); }
+  if (name == "Shuffle") { return sd_bus_message_append(reply, "b", static_cast<int>(app.shuffle)); }
+  if (name == "Volume") { return sd_bus_message_append(reply, "d", static_cast<double>(app.volume) / 100.0); }
+  if (name == "Position") {
+    const bool local = app.source == Source::Local;
+    return sd_bus_message_append(reply, "x", static_cast<int64_t>(local ? music.getPlayingOffset().asSeconds() * 1e6f : 0.f));
+  }
+  if (name == "Metadata") { return mprisMetadata(app, reply); }
+  if (name == "Rate" || name == "MinimumRate" || name == "MaximumRate") { return sd_bus_message_append(reply, "d", 1.0); }
+  if (name == "Identity") { return sd_bus_message_append(reply, "s", "0verau"); }
+  if (name == "SupportedUriSchemes" || name == "SupportedMimeTypes") { return sd_bus_message_append(reply, "as", 0); }
+  if (name == "CanRaise" || name == "HasTrackList") { return sd_bus_message_append(reply, "b", 0); }
+  return sd_bus_message_append(reply, "b", 1); // CanQuit, CanPlay, CanGoNext and the other Can... properties
+}
+
+#define MPRIS_CONST(name, type) SD_BUS_PROPERTY(name, type, mprisProperty, 0, SD_BUS_VTABLE_PROPERTY_CONST)
+#define MPRIS_CHANGES(name, type) SD_BUS_PROPERTY(name, type, mprisProperty, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE)
+
+const sd_bus_vtable MPRIS_ROOT_VTABLE[] = {
+  SD_BUS_VTABLE_START(0),
+  SD_BUS_METHOD("Raise", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("Quit", "", "", mprisMethod, 0),
+  MPRIS_CONST("CanQuit", "b"),
+  MPRIS_CONST("CanRaise", "b"),
+  MPRIS_CONST("HasTrackList", "b"),
+  MPRIS_CONST("Identity", "s"),
+  MPRIS_CONST("SupportedUriSchemes", "as"),
+  MPRIS_CONST("SupportedMimeTypes", "as"),
+  SD_BUS_VTABLE_END
+};
+
+const sd_bus_vtable MPRIS_PLAYER_VTABLE[] = {
+  SD_BUS_VTABLE_START(0),
+  SD_BUS_METHOD("Next", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("Previous", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("Pause", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("PlayPause", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("Stop", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("Play", "", "", mprisMethod, 0),
+  SD_BUS_METHOD("Seek", "x", "", mprisMethod, 0),
+  SD_BUS_METHOD("SetPosition", "ox", "", mprisMethod, 0),
+  MPRIS_CHANGES("PlaybackStatus", "s"),
+  MPRIS_CHANGES("LoopStatus", "s"),
+  MPRIS_CHANGES("Shuffle", "b"),
+  MPRIS_CHANGES("Volume", "d"),
+  MPRIS_CHANGES("Metadata", "a{sv}"),
+  SD_BUS_PROPERTY("Position", "x", mprisProperty, 0, 0), // changes all the time, it is only read
+  MPRIS_CONST("Rate", "d"),
+  MPRIS_CONST("MinimumRate", "d"),
+  MPRIS_CONST("MaximumRate", "d"),
+  MPRIS_CONST("CanGoNext", "b"),
+  MPRIS_CONST("CanGoPrevious", "b"),
+  MPRIS_CONST("CanPlay", "b"),
+  MPRIS_CONST("CanPause", "b"),
+  MPRIS_CONST("CanSeek", "b"),
+  MPRIS_CONST("CanControl", "b"),
+  SD_BUS_VTABLE_END
+};
+
+void mprisStart(App &app) {
+  if (sd_bus_open_user(&app.bus) < 0) { // no desktop session (a console, ssh): everything else works
+    app.bus = nullptr;
+    return;
+  }
+  // A second running player gets its own name, as the MPRIS rules say
+  const std::string name = "org.mpris.MediaPlayer2.overau";
+  if (sd_bus_add_object_vtable(app.bus, nullptr, MPRIS_PATH, "org.mpris.MediaPlayer2", MPRIS_ROOT_VTABLE, &app) < 0
+      || sd_bus_add_object_vtable(app.bus, nullptr, MPRIS_PATH, MPRIS_PLAYER, MPRIS_PLAYER_VTABLE, &app) < 0
+      || (sd_bus_request_name(app.bus, name.c_str(), 0) < 0
+          && sd_bus_request_name(app.bus, (name + ".instance" + std::to_string(getpid())).c_str(), 0) < 0)) {
+    app.bus = sd_bus_flush_close_unref(app.bus);
+  }
+}
+
+// Answer the calls, and tell the desktop when the song, the state or a setting changed
+void mprisUpdate(App &app) {
+  if (!app.bus) { return; }
+  std::string seen = playbackStatus(app) + "\n" + app.now.path + "\n" + app.now.url + "\n" + std::to_string(app.volume)
+    + (app.shuffle ? "S" : "") + (app.repeat ? "R" : "");
+  {
+    std::lock_guard<std::mutex> lock(metaMutex);
+    seen += streamTitle;
+  }
+  if (seen != app.mprisSeen) {
+    app.mprisSeen = seen;
+    sd_bus_emit_properties_changed(app.bus, MPRIS_PATH, MPRIS_PLAYER, "PlaybackStatus", "Metadata", "Volume", "Shuffle", "LoopStatus", nullptr);
+  }
+  while (sd_bus_process(app.bus, nullptr) > 0) {}
+}
+
+void mprisStop(App &app) {
+  if (app.bus) { app.bus = sd_bus_flush_close_unref(app.bus); }
+}
+#else
+void mprisStart(App &) {}
+void mprisUpdate(App &) {}
+void mprisStop(App &) {}
+#endif
+
 // ---- Screen ----
 
 // A line of the list: "  12. >+ Artist  Title  03:45". > is the playing item, + a favourite.
@@ -1433,18 +1633,8 @@ std::string browserLine(const App &app, const Track &track, bool radio, int inde
 
 void drawHeader(App &app, int rows, int cols) {
   (void)rows;
-  int colorPair = 3;
-  std::string status = "Stopped";
-  // A station that is offline or ended keeps its player, but it doesn't play
-  const libvlc_state_t radioState = app.player ? libvlc_media_player_get_state(app.player) : libvlc_Error;
-  const bool radioOn = radioState != libvlc_Error && radioState != libvlc_Ended;
-  if (radioOn || music.getStatus() == sf::Music::Status::Playing) {
-    status = "Playing";
-    colorPair = 1;
-  } else if (music.getStatus() == sf::Music::Status::Paused) {
-    status = "Paused";
-    colorPair = 2;
-  }
+  const std::string status = playbackStatus(app);
+  const int colorPair = (status == "Playing") ? 1 : (status == "Paused") ? 2 : 3;
   std::string title = "No track selected";
   if (app.source == Source::Local) {
     title = app.now.title;
