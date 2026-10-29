@@ -349,7 +349,7 @@ int main(int argc, char *argv[]) {
   }
   app.restoreCursor = !app.lastSong.empty();
 
-  std::thread scanner(scanLibrary, musicDir, cacheFile, cached, live);
+  std::thread scanner(scanLibrary, root, cacheFile, cached, live);
   std::string failure;
   initscr();
   try {
