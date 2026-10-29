@@ -25,7 +25,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <cwchar>
-#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -138,7 +137,9 @@ const Action ACTIONS[] = {
   {"FAVOURITE", 'f', "Add or remove the selected item from the favourites"},
   {"SHOW_HIDE_FAVOURITES", 'F', "Show only the favourites"},
   {"GOTO", ':', "Go to a song by its number"},
-  {"QUEUE", 'a', "Add the selected song to the queue"},
+  {"QUEUE", 'a', "Add the selected song to the queue, in the queue: remove it"},
+  {"SHOW_HIDE_QUEUE", 'Q', "Show/hide the queue"},
+  {"CLEAR_QUEUE", 'X', "Empty the queue"},
   {"RESCAN", 'R', "Look for new, changed and removed songs"},
   {"SORT", 's', "Sort by path, title, artist or album"},
   {"EXPORT_FAVOURITES", 'E', "Save the favourites as .m3u files in your home folder"},
@@ -185,7 +186,8 @@ struct App {
   libvlc_instance_t *vlc = nullptr;
   libvlc_media_player_t *player = nullptr;
   // Songs that play before the normal order continues
-  std::deque<Track> queue;
+  List queue;
+  bool showQueue = false;        // the queue is listed instead of the songs
   // Favourites: songs by file, stations by address
   std::set<std::string> favSongs;
   std::set<std::string> favStations;
@@ -297,6 +299,7 @@ std::string browserLine(const App &app, const Track &track, bool radio, int inde
 void drawHeader(App &app, int rows, int cols);
 int sidebarWidth(const App &app, int cols);
 void drawSidebar(App &app, int rows, int width);
+List &activeList(App &app);
 void drawBrowser(App &app, List &list, bool radio, int rows, int x, int width);
 void drawLyrics(App &app, int rows, int x0, int width);
 void drawFooter(App &app, int rows, int cols, bool listView);
@@ -447,14 +450,14 @@ void runUi(App &app) {
       drawLyrics(app, rows, lyricsX, cols - lyricsX);
       listView = false;
     } else {
-      // The albums on the left, the songs of the selected album next to them, the cover on the right
+      // The albums on the left, the songs of the selected album (or the queue) next to them, the cover on the right
       const int sidebar = sidebarWidth(app, cols);
       const int left = sidebar > 0 ? sidebar + 1 : 0;
       const int artWidth = artPanelWidth(app, cols, left);
       updateArt(app, artWidth > 0);
       const int right = artWidth > 0 ? artWidth + 1 : 0;
       if (sidebar > 0) { drawSidebar(app, rows, sidebar); }
-      drawBrowser(app, app.songs, false, rows, left, cols - left - right);
+      drawBrowser(app, app.showQueue ? app.queue : app.songs, false, rows, left, cols - left - right);
       if (artWidth > 0) {
         for (int y = 0; y < visibleRows; y++) { mvaddstr(y + 2, cols - artWidth - 1, "|"); }
         drawArtPanel(app, rows, cols - artWidth, artWidth);
@@ -1333,9 +1336,9 @@ void playRadio(App &app, const Track &station) {
 // The songs of the queue come first
 void playNext(App &app, int direction, bool automatic) {
   const std::vector<Track> &songs = app.songs.items;
-  if (direction > 0 && !app.queue.empty() && !(automatic && app.repeat)) {
-    Track queued = app.queue.front();
-    app.queue.pop_front();
+  if (direction > 0 && !app.queue.items.empty() && !(automatic && app.repeat)) {
+    Track queued = app.queue.items.front();
+    app.queue.items.erase(app.queue.items.begin());
     for (size_t i = 0; i < songs.size(); i++) {
       if (songs[i].path == queued.path) { app.songs.highlight = static_cast<int>(i); break; }
     }
@@ -1455,7 +1458,13 @@ void drawHeader(App &app, int rows, int cols) {
   mvaddstr(1, 0, fitWidth(help, cols).c_str()); // a longer line would wrap into the list
 }
 
-// The songs or the radio stations; the cursor line is highlighted
+// The list the keys work on: the stations, the queue or the songs
+List &activeList(App &app) {
+  if (app.showRadio) { return app.stations; }
+  return (app.showQueue && !app.showLyrics) ? app.queue : app.songs;
+}
+
+// The songs, the queue or the radio stations; the cursor line is highlighted
 void drawBrowser(App &app, List &list, bool radio, int rows, int x, int width) {
   const int visible = std::max(1, rows - 7);
   const int count = static_cast<int>(list.items.size());
@@ -1463,7 +1472,10 @@ void drawBrowser(App &app, List &list, bool radio, int rows, int x, int width) {
     list.highlight = 0;
     list.offset = 0;
     std::string hint;
-    if (app.showFavs) {
+    if (&list == &app.queue) {
+      hint = "The queue is empty. Press " + keyLabel(app.keys.at("QUEUE")) + " on a song to add it, "
+        + keyLabel(app.keys.at("SHOW_HIDE_QUEUE")) + " shows the songs again.";
+    } else if (app.showFavs) {
       hint = "No favourites here yet. Press " + keyLabel(app.keys.at("FAVOURITE")) + " on an item to add it, "
         + keyLabel(app.keys.at("SHOW_HIDE_FAVOURITES")) + " shows everything again.";
     } else if (radio) {
@@ -1494,7 +1506,7 @@ void drawBrowser(App &app, List &list, bool radio, int rows, int x, int width) {
 
 // Width of the album list, 0 when it is not shown: it belongs to the song list and needs a wide terminal
 int sidebarWidth(const App &app, int cols) {
-  if (!app.showSidebar || app.showRadio || app.showLyrics || cols < 60) { return 0; }
+  if (!app.showSidebar || app.showRadio || app.showLyrics || app.showQueue || cols < 60) { return 0; }
   return std::clamp(cols / 4, 18, 32);
 }
 
@@ -1914,7 +1926,7 @@ void drawProgressBarWithTime(float elapsed, float total, int cols, int y) {
 void drawFooter(App &app, int rows, int cols, bool listView) {
   auto onOff = [](bool value) { return value ? "ON" : "OFF"; };
   if (listView) {
-    const List &list = app.showRadio ? app.stations : app.songs;
+    const List &list = activeList(app);
     const std::string volume = "Volume: " + std::to_string(static_cast<int>(app.volume)) + "%";
     std::string toggles, info;
     if (app.showRadio) {
@@ -1923,7 +1935,9 @@ void drawFooter(App &app, int rows, int cols, bool listView) {
     } else {
       toggles = std::string("Shuffle: ") + onOff(app.shuffle) + " | Repeat: " + onOff(app.repeat) + " | Show Album " + onOff(app.showAlbum)
         + " | Show Artist " + onOff(app.showArtist) + " | Favourites only: " + onOff(app.showFavs);
-      if (!scanDone) {
+      if (app.showQueue) {
+        info = "Queue: " + std::to_string(list.items.size()) + " | " + volume;
+      } else if (!scanDone) {
         info = std::string(libraryPreloaded ? "Checking the library for changes... " : "Scanning for songs, please wait.... ")
           + "(" + std::to_string(list.items.size()) + " found)";
       } else {
@@ -1932,7 +1946,7 @@ void drawFooter(App &app, int rows, int cols, bool listView) {
           info += " | Album: " + app.sidebar.items[app.sidebar.highlight].name;
         }
         info += std::string(" | Sort: ") + SORT_NAMES[app.sortMode];
-        if (!app.queue.empty()) { info += " | Queue: " + std::to_string(app.queue.size()); }
+        if (!app.queue.items.empty()) { info += " | Queue: " + std::to_string(app.queue.items.size()); }
         info += " | " + volume;
       }
     }
@@ -1988,7 +2002,11 @@ std::string promptLine(int rows, const std::string &label) {
 }
 
 void doSearch(App &app, int rows) {
-  List &list = app.showRadio ? app.stations : app.songs;
+  List &list = activeList(app);
+  if (&list == &app.queue) {
+    setMessage(app, "Search works in the song list.");
+    return;
+  }
   list.query = promptLine(rows, "Search: ");
   if (app.showRadio) { rebuildStationView(app); } else { rebuildSongView(app); }
   list.highlight = 0;
@@ -1997,7 +2015,7 @@ void doSearch(App &app, int rows) {
 
 // Jump to a number of the list: the songs are numbered from 1
 void gotoNumber(App &app, int rows) {
-  List &list = app.showRadio ? app.stations : app.songs;
+  List &list = activeList(app);
   const int count = static_cast<int>(list.items.size());
   if (count == 0) { return; }
   const std::string text = promptLine(rows, "Go to number (1-" + std::to_string(count) + "): ");
@@ -2049,7 +2067,7 @@ void handleKey(App &app, int ch, int rows, int cols) {
       return;
     }
   }
-  List &list = app.showRadio ? app.stations : app.songs;
+  List &list = activeList(app);
   const int count = static_cast<int>(list.items.size());
   const int page = std::max(1, rows - 7);
   if (action == "UP") {
@@ -2066,8 +2084,13 @@ void handleKey(App &app, int ch, int rows, int cols) {
     list.highlight = std::max(0, count - 1);
   } else if (action == "PLAY") {
     if (count > 0) {
-      if (app.showRadio) { playRadio(app, list.items[list.highlight]); }
-      else { playLocal(app, list.items[list.highlight]); }
+      if (app.showRadio) {
+        playRadio(app, list.items[list.highlight]);
+      } else {
+        const Track track = list.items[list.highlight]; // a copy: in the queue view it leaves the queue
+        if (&list == &app.queue) { list.items.erase(list.items.begin() + list.highlight); }
+        playLocal(app, track);
+      }
     }
   } else if (action == "NEXT_SONG" || action == "PREVIOUS_SONG") {
     const int direction = (action == "NEXT_SONG") ? 1 : -1;
@@ -2150,10 +2173,22 @@ void handleKey(App &app, int ch, int rows, int cols) {
   } else if (action == "GOTO") {
     gotoNumber(app, rows);
   } else if (action == "QUEUE") {
-    if (!app.showRadio && count > 0) {
-      app.queue.push_back(list.items[list.highlight]);
-      setMessage(app, "Queued (" + std::to_string(app.queue.size()) + "): " + list.items[list.highlight].title);
+    if (&list == &app.queue && count > 0) {
+      setMessage(app, "Removed from the queue: " + list.items[list.highlight].title);
+      list.items.erase(list.items.begin() + list.highlight);
+    } else if (!app.showRadio && count > 0) {
+      app.queue.items.push_back(list.items[list.highlight]);
+      setMessage(app, "Queued (" + std::to_string(app.queue.items.size()) + "): " + list.items[list.highlight].title);
     }
+  } else if (action == "SHOW_HIDE_QUEUE") {
+    if (app.showRadio || app.showLyrics) {
+      setMessage(app, "The queue is shown in place of the song list.");
+    } else {
+      app.showQueue = !app.showQueue;
+    }
+  } else if (action == "CLEAR_QUEUE") {
+    app.queue.items.clear();
+    setMessage(app, "The queue is empty.");
   } else if (action == "SORT") {
     app.sortMode = (app.sortMode + 1) % SORT_MODES;
     app.stateDirty = true;
