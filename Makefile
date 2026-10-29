@@ -22,13 +22,17 @@ PROG=main.cpp
 all:
 	$(CXX) -o $(PACKAGE) $(PROG) $(CFLAGS) $(LDFLAGS)
 
+check:
+	$(CXX) -o $(PACKAGE)-test test.cpp $(CFLAGS) $(LDFLAGS)
+	./$(PACKAGE)-test
+
 install: 
 	install -D -s -m 755 $(PACKAGE) /usr/bin/$(PACKAGE)
 
 clean:
-	rm -f $(PACKAGE)
+	rm -f $(PACKAGE) $(PACKAGE)-test
 
 uninstall:
 	rm -f /usr/bin/$(PACKAGE)
 
-.PHONY: all install clean uninstall
+.PHONY: all check install clean uninstall
