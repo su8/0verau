@@ -349,7 +349,7 @@ int main(int argc, char *argv[]) {
   }
   app.restoreCursor = !app.lastSong.empty();
 
-  std::thread scanner(scanLibrary, musicDir, cacheFile, cached, live);
+  std::thread scanner(scanLibrary, root, cacheFile, cached, live);
   std::string failure;
   initscr();
   try {
@@ -385,6 +385,7 @@ int main(int argc, char *argv[]) {
   stopRadio(app);
   if (app.vlc) { libvlc_release(app.vlc); }
   scanner.join();
+  if (app.lyricsLoading) { app.lyricsFuture.wait(); } // curl must be idle before its cleanup; running = false ends the download
   curl_global_cleanup();
   if (!failure.empty()) {
     std::cerr << "Error: " << failure << std::endl;
@@ -877,7 +878,15 @@ void sortTracks(std::vector<Track> &tracks, int mode) {
       default: return t.path;
     }
   };
-  std::stable_sort(tracks.begin(), tracks.end(), [&field](const Track &a, const Track &b) { return lower(field(a)) < lower(field(b)); });
+  // Every key is made lower case once, not at every comparison
+  std::vector<std::pair<std::string, size_t>> keys;
+  keys.reserve(tracks.size());
+  for (size_t i = 0; i < tracks.size(); i++) { keys.emplace_back(lower(field(tracks[i])), i); }
+  std::stable_sort(keys.begin(), keys.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+  std::vector<Track> sorted;
+  sorted.reserve(tracks.size());
+  for (const auto &key : keys) { sorted.push_back(std::move(tracks[key.second])); }
+  tracks = std::move(sorted);
 }
 
 // Albums are grouped by name without regard to case; songs without an album are "Unknown Album"
@@ -1059,6 +1068,9 @@ bool fetchLyrics(const std::string &artist, const std::string &title, std::strin
   curl_easy_setopt(curl.get(), CURLOPT_CONNECTTIMEOUT, 5L);
   curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, 10L);
   curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, "0verau (https://github.com/su8/0verau)");
+  // Stop the download when the player quits, instead of waiting for the timeout
+  curl_easy_setopt(curl.get(), CURLOPT_NOPROGRESS, 0L);
+  curl_easy_setopt(curl.get(), CURLOPT_XFERINFOFUNCTION, +[](void *, curl_off_t, curl_off_t, curl_off_t, curl_off_t) -> int { return running ? 0 : 1; });
   return curl_easy_perform(curl.get()) == CURLE_OK && !body.empty();
 }
 
@@ -1271,7 +1283,7 @@ void playRadio(App &app, const Track &station) {
     setMessage(app, "Error: libVLC is not available.");
     return;
   }
-  if (music.getStatus() != sf::Music::Stopped) { music.stop(); }
+  if (music.getStatus() != sf::Music::Status::Stopped) { music.stop(); }
   app.localActive = false;
   stopRadio(app);
   libvlc_media_t *media = libvlc_media_new_location(app.vlc, station.url.c_str());
@@ -1337,9 +1349,9 @@ void togglePause(App &app) {
     stopRadio(app);
     return;
   }
-  if (music.getStatus() == sf::Music::Playing) {
+  if (music.getStatus() == sf::Music::Status::Playing) {
     music.pause();
-  } else if (music.getStatus() == sf::Music::Paused) {
+  } else if (music.getStatus() == sf::Music::Status::Paused) {
     music.play();
   }
 }
@@ -1352,7 +1364,7 @@ void changeVolume(App &app, float delta) {
 }
 
 void seekBy(float seconds) {
-  if (music.getStatus() == sf::Music::Stopped) { return; }
+  if (music.getStatus() == sf::Music::Status::Stopped) { return; }
   float position = music.getPlayingOffset().asSeconds() + seconds;
   position = std::clamp(position, 0.f, music.getDuration().asSeconds());
   music.setPlayingOffset(sf::seconds(position));
@@ -1360,7 +1372,7 @@ void seekBy(float seconds) {
 
 // Auto-play next track when a song ended
 void autoAdvance(App &app) {
-  if (app.source == Source::Local && app.localActive && music.getStatus() == sf::Music::Stopped) {
+  if (app.source == Source::Local && app.localActive && music.getStatus() == sf::Music::Status::Stopped) {
     app.localActive = false; // if the next song can't be opened, don't try again every frame
     playNext(app, 1, true);
   }
@@ -1389,10 +1401,13 @@ void drawHeader(App &app, int rows, int cols) {
   (void)rows;
   int colorPair = 3;
   std::string status = "Stopped";
-  if (app.player || music.getStatus() == sf::Music::Playing) {
+  // A station that is offline or ended keeps its player, but it doesn't play
+  const libvlc_state_t radioState = app.player ? libvlc_media_player_get_state(app.player) : libvlc_Error;
+  const bool radioOn = radioState != libvlc_Error && radioState != libvlc_Ended;
+  if (radioOn || music.getStatus() == sf::Music::Status::Playing) {
     status = "Playing";
     colorPair = 1;
-  } else if (music.getStatus() == sf::Music::Paused) {
+  } else if (music.getStatus() == sf::Music::Status::Paused) {
     status = "Paused";
     colorPair = 2;
   }
@@ -1901,7 +1916,7 @@ void drawFooter(App &app, int rows, int cols, bool listView) {
     mvaddstr(rows - 4, 0, fitWidth(info, cols).c_str());
     if (!list.query.empty()) { mvaddstr(rows - 3, 0, fitWidth("Search: " + list.query, cols).c_str()); }
   }
-  if (app.source == Source::Local && music.getStatus() != sf::Music::Stopped) {
+  if (app.source == Source::Local && music.getStatus() != sf::Music::Status::Stopped) {
     drawProgressBarWithTime(music.getPlayingOffset().asSeconds(), music.getDuration().asSeconds(), cols, rows - 2);
   }
   if (!app.message.empty() && std::chrono::steady_clock::now() < app.messageUntil) {

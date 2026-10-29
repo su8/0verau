@@ -39,3 +39,7 @@
 
 # debug information files
 *.dwo
+
+# Built programs
+/0verau
+/0verau-test
