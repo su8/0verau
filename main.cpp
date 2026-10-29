@@ -1125,22 +1125,26 @@ std::vector<LyricLine> parseLrc(const std::string &lrc) {
   return lines;
 }
 
-// Runs in its own thread: the cached file next to the song, or the download
+// Runs in its own thread: song.lrc next to the song, or the download, which is saved as song.lrc
+// so other players can show it too. Older versions saved lrclib's answer as song.mp3.lrc: it is still read
 LyricsResult loadLyrics(Track track) {
   LyricsResult result;
   try {
-    const std::string cacheFile = track.path + ".lrc";
+    const std::string lrcFile = std::filesystem::path(track.path).replace_extension(".lrc").string();
     std::string body;
-    {
-      std::ifstream in(cacheFile);
-      if (in) {
-        std::ostringstream all;
-        all << in.rdbuf();
-        body = all.str();
+    bool haveLrc = false; // song.lrc exists, nothing has to be saved
+    for (const std::string &file : {lrcFile, track.path + ".lrc"}) {
+      std::ifstream in(file);
+      if (!in) { continue; }
+      std::ostringstream all;
+      all << in.rdbuf();
+      body = all.str();
+      if (!body.empty()) {
+        haveLrc = (file == lrcFile);
+        break;
       }
     }
-    bool fromCache = !body.empty();
-    if (!fromCache) {
+    if (body.empty()) {
       if (track.artist == "Unknown Artist") {
         result.error = "The song has no artist tag, lyrics can't be looked up.";
         return result;
@@ -1150,28 +1154,31 @@ LyricsResult loadLyrics(Track track) {
         return result;
       }
     }
-    // A broken or unexpected answer must not stop the player
-    json data = json::parse(body, nullptr, false);
-    if (data.is_discarded() || !data.is_object()) {
-      result.error = "The lyrics answer can't be read.";
-      return result;
+    // lrclib's answer is JSON with synced and plain lyrics; an .lrc file has one of them
+    std::string text = body;
+    if (body[0] == '{') {
+      // A broken or unexpected answer must not stop the player
+      json data = json::parse(body, nullptr, false);
+      if (data.is_discarded() || !data.is_object()) {
+        result.error = "The lyrics answer can't be read.";
+        return result;
+      }
+      std::string synced, plain;
+      if (data.contains("syncedLyrics") && data["syncedLyrics"].is_string()) { synced = data["syncedLyrics"].get<std::string>(); }
+      if (data.contains("plainLyrics") && data["plainLyrics"].is_string()) { plain = data["plainLyrics"].get<std::string>(); }
+      text = parseLrc(synced).empty() ? plain : synced;
     }
-    std::string synced, plain;
-    if (data.contains("syncedLyrics") && data["syncedLyrics"].is_string()) { synced = data["syncedLyrics"].get<std::string>(); }
-    if (data.contains("plainLyrics") && data["plainLyrics"].is_string()) { plain = data["plainLyrics"].get<std::string>(); }
-    if (!synced.empty()) {
-      result.lines = parseLrc(synced);
-    }
-    if (result.lines.empty() && !plain.empty()) {
+    result.lines = parseLrc(text);
+    if (result.lines.empty()) {
       result.synced = false;
-      std::istringstream in(plain);
+      std::istringstream in(text);
       std::string line;
       while (std::getline(in, line)) { result.lines.push_back({-1.f, trim(line)}); }
     }
     if (result.lines.empty()) { result.error = "This song has no lyrics (instrumental?)."; }
-    if (!fromCache) {
-      std::ofstream out(cacheFile, std::ios::out | std::ios::trunc); // the music folder can be read-only: no cache then
-      if (out) { out << body; }
+    if (!haveLrc && !text.empty()) {
+      std::ofstream out(lrcFile, std::ios::out | std::ios::trunc); // the music folder can be read-only: no file then
+      if (out) { out << text; }
     }
   } catch (const std::exception &e) {
     result.lines.clear();
