@@ -385,6 +385,7 @@ int main(int argc, char *argv[]) {
   stopRadio(app);
   if (app.vlc) { libvlc_release(app.vlc); }
   scanner.join();
+  if (app.lyricsLoading) { app.lyricsFuture.wait(); } // curl must be idle before its cleanup; running = false ends the download
   curl_global_cleanup();
   if (!failure.empty()) {
     std::cerr << "Error: " << failure << std::endl;
@@ -1059,6 +1060,9 @@ bool fetchLyrics(const std::string &artist, const std::string &title, std::strin
   curl_easy_setopt(curl.get(), CURLOPT_CONNECTTIMEOUT, 5L);
   curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, 10L);
   curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, "0verau (https://github.com/su8/0verau)");
+  // Stop the download when the player quits, instead of waiting for the timeout
+  curl_easy_setopt(curl.get(), CURLOPT_NOPROGRESS, 0L);
+  curl_easy_setopt(curl.get(), CURLOPT_XFERINFOFUNCTION, +[](void *, curl_off_t, curl_off_t, curl_off_t, curl_off_t) -> int { return running ? 0 : 1; });
   return curl_easy_perform(curl.get()) == CURLE_OK && !body.empty();
 }
 
